@@ -3,9 +3,10 @@ import { Building2, User, Save, Shield, AlertTriangle } from 'lucide-react'
 import { useOrg } from '../hooks/useOrg'
 import { useAuth } from '../hooks/useAuth'
 import { useToast } from '../components/ui/Toast'
+import { supabase } from '../lib/supabase'
 
 export function SettingsPage() {
-  const { currentOrg, updateOrg, isOwner } = useOrg()
+  const { currentOrg, updateOrg, isOwner, fetchOrgs, switchOrg, orgs } = useOrg()
   const { profile, updateProfile, user } = useAuth()
   const toast = useToast()
 
@@ -13,6 +14,8 @@ export function SettingsPage() {
   const [profileForm, setProfileForm] = useState({ full_name: profile?.full_name || '' })
   const [savingOrg, setSavingOrg] = useState(false)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [deletingOrg, setDeletingOrg] = useState(false)
+  const [confirmName, setConfirmName] = useState('')
   const [activeTab, setActiveTab] = useState('org')
 
   async function handleSaveOrg(e) {
@@ -31,6 +34,37 @@ export function SettingsPage() {
     setSavingProfile(false)
     if (error) toast(error.message, 'error')
     else toast('Profile updated', 'success')
+  }
+
+  async function handleDeleteOrg() {
+    if (!currentOrg) return
+    if (confirmName !== currentOrg.name) {
+      toast('Organisation name does not match', 'error')
+      return
+    }
+    setDeletingOrg(true)
+    try {
+      // Delete all domains first (cascades to DNS records)
+      await supabase.from('domains').delete().eq('org_id', currentOrg.id)
+      // Delete members
+      await supabase.from('org_members').delete().eq('org_id', currentOrg.id)
+      // Delete invitations
+      await supabase.from('org_invitations').delete().eq('org_id', currentOrg.id)
+      // Delete org
+      const { error } = await supabase.from('organisations').delete().eq('id', currentOrg.id)
+      if (error) throw error
+
+      toast('Organisation deleted', 'success')
+      setConfirmName('')
+      // Switch to another org or refresh
+      await fetchOrgs()
+      const remaining = orgs.filter(o => o.id !== currentOrg.id)
+      if (remaining.length > 0) switchOrg(remaining[0])
+      else window.location.href = '/onboarding'
+    } catch (err) {
+      toast(err.message || 'Failed to delete organisation', 'error')
+    }
+    setDeletingOrg(false)
   }
 
   return (
@@ -73,13 +107,7 @@ export function SettingsPage() {
                 )}
                 <div className="form-group">
                   <label className="form-label">Organisation name</label>
-                  <input
-                    className="input"
-                    value={orgForm.name}
-                    onChange={e => setOrgForm(p => ({ ...p, name: e.target.value }))}
-                    disabled={!isOwner}
-                    required
-                  />
+                  <input className="input" value={orgForm.name} onChange={e => setOrgForm(p => ({ ...p, name: e.target.value }))} disabled={!isOwner} required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Organisation ID</label>
@@ -116,12 +144,7 @@ export function SettingsPage() {
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
                 <div className="form-group">
                   <label className="form-label">Full name</label>
-                  <input
-                    className="input"
-                    value={profileForm.full_name}
-                    onChange={e => setProfileForm(p => ({ ...p, full_name: e.target.value }))}
-                    placeholder="Your name"
-                  />
+                  <input className="input" value={profileForm.full_name} onChange={e => setProfileForm(p => ({ ...p, full_name: e.target.value }))} placeholder="Your name" />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Email address</label>
@@ -148,16 +171,49 @@ export function SettingsPage() {
                 <h4 style={{ margin: 0, color: 'var(--danger-700)' }}>Danger zone</h4>
               </div>
             </div>
-            <div className="card-body">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 0', borderBottom: '1px solid var(--neutral-100)' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--neutral-800)' }}>Delete organisation</div>
-                  <div style={{ fontSize: '0.8125rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>Permanently delete this organisation and all its data.</div>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {!isOwner && (
+                <div className="alert-banner info">
+                  <Shield size={15} />
+                  <span>Only the organisation owner can delete the organisation.</span>
                 </div>
-                <button className="btn btn-danger btn-sm" disabled={!isOwner} title={!isOwner ? 'Only owners can delete the organisation' : ''}>
-                  Delete
-                </button>
-              </div>
+              )}
+
+              {isOwner && (
+                <>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--neutral-800)', marginBottom: '0.25rem' }}>Delete organisation</div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--neutral-500)' }}>
+                      This will permanently delete <strong style={{ color: 'var(--neutral-700)' }}>{currentOrg?.name}</strong> and all its domains, DNS records, and history. This cannot be undone.
+                    </div>
+                  </div>
+
+                  <div className="alert-banner danger">
+                    <AlertTriangle size={15} />
+                    <span>All domains and their scan history will be permanently deleted.</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">
+                      Type <strong>{currentOrg?.name}</strong> to confirm
+                    </label>
+                    <input
+                      className="input"
+                      placeholder={currentOrg?.name}
+                      value={confirmName}
+                      onChange={e => setConfirmName(e.target.value)}
+                    />
+                  </div>
+
+                  <button
+                    className={`btn btn-danger ${deletingOrg ? 'btn-loading' : ''}`}
+                    onClick={handleDeleteOrg}
+                    disabled={deletingOrg || confirmName !== currentOrg?.name}
+                  >
+                    {!deletingOrg && <><AlertTriangle size={14} /><span>Delete organisation permanently</span></>}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
