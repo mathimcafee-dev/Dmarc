@@ -18,6 +18,7 @@ import { AlertsPage } from './pages/AlertsPage'
 import { ActivityPage } from './pages/ActivityPage'
 import { MembersPage } from './pages/MembersPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ToolsPage } from './pages/ToolsPage'
 import './index.css'
 
 function Spinner() {
@@ -72,6 +73,7 @@ export default function App() {
             <Route element={<PublicRoute />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/tools" element={<ToolsPage />} />
             </Route>
             <Route path="/onboarding" element={<OnboardingGuard />} />
             <Route element={<ProtectedLayout />}>
