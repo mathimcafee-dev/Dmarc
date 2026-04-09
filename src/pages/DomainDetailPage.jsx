@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Globe, Shield, Activity, CheckCircle, AlertTriangle,
-  RefreshCw, Copy, Clock, ExternalLink, ChevronRight, Lightbulb, Zap
+  RefreshCw, Copy, Clock, ExternalLink, ChevronRight, Lightbulb, Zap,
+  ShieldCheck, ShieldAlert, ShieldX, Loader
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useDomains } from '../hooks/useDomains'
@@ -294,6 +295,8 @@ export function DomainDetailPage() {
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [activeTab, setActiveTab] = useState('overview')
+  const [blacklist, setBlacklist] = useState(null)
+  const [blacklistLoading, setBlacklistLoading] = useState(false)
 
   useEffect(() => {
     const d = domains.find(d => d.id === id)
@@ -325,6 +328,17 @@ export function DomainDetailPage() {
     fetchRecords()
     const d = domains.find(d => d.id === id)
     if (d) setDomain({ ...d, health_score: result.healthScore, last_checked_at: new Date().toISOString() })
+  }
+
+  async function fetchBlacklist() {
+    if (!domain?.domain) return
+    setBlacklistLoading(true)
+    try {
+      const res = await fetch(`/api/blacklist-check?domain=${domain.domain}`)
+      const data = await res.json()
+      setBlacklist(data)
+    } catch { setBlacklist(null) }
+    setBlacklistLoading(false)
   }
 
   const policyColor = { reject: 'var(--success-500)', quarantine: 'var(--warning-500)', none: 'var(--danger-500)' }
@@ -387,8 +401,8 @@ export function DomainDetailPage() {
 
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: '1.5rem' }}>
-        {['overview', 'dmarc', 'spf', 'dkim', 'bimi'].map(t => (
-          <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+        {['overview', 'dmarc', 'spf', 'dkim', 'bimi', 'blacklist'].map(t => (
+          <button key={t} className={`tab ${activeTab === t ? 'active' : ''}`} onClick={() => { setActiveTab(t); if (t === 'blacklist' && !blacklist) fetchBlacklist() }}>
             {t.toUpperCase()}
           </button>
         ))}
@@ -595,6 +609,130 @@ export function DomainDetailPage() {
                 )}
                 <RecordBlock label="Raw BIMI Record" value={bimi.raw_record} />
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'blacklist' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {blacklistLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '2rem', justifyContent: 'center' }}>
+              <Loader size={20} style={{ animation: 'spin 1s linear infinite' }} />
+              <span style={{ color: 'var(--neutral-500)' }}>Checking {blacklist ? '' : '10 '}blacklists…</span>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          )}
+
+          {!blacklistLoading && blacklist && (
+            <>
+              {/* Summary card */}
+              <div className="card">
+                <div className="card-body">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                      {blacklist.status === 'clean' && <ShieldCheck size={40} color="var(--success-500)" />}
+                      {blacklist.status === 'warning' && <ShieldAlert size={40} color="var(--warning-500)" />}
+                      {blacklist.status === 'danger' && <ShieldX size={40} color="var(--danger-500)" />}
+                      <div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 700, color: blacklist.status === 'clean' ? 'var(--success-600)' : blacklist.status === 'warning' ? 'var(--warning-600)' : 'var(--danger-600)' }}>
+                          {blacklist.status === 'clean' ? 'Not blacklisted' : blacklist.status === 'warning' ? 'Listed on some blacklists' : 'Listed on multiple blacklists'}
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: 'var(--neutral-500)', marginTop: '0.25rem' }}>
+                          {blacklist.domain} · IP: {blacklist.ip || 'not resolved'} · Checked {blacklist.checked} lists
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: '1.5rem' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--danger-500)' }}>{blacklist.listed_count}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 500 }}>Listed</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success-500)' }}>{blacklist.clean_count}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--neutral-500)', fontWeight: 500 }}>Clean</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Listed blacklists */}
+              {blacklist.listed_count > 0 && (
+                <div className="card" style={{ border: '1px solid var(--danger-200)' }}>
+                  <div className="card-header" style={{ background: 'var(--danger-50)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <ShieldX size={16} color="var(--danger-600)" />
+                      <h4 style={{ margin: 0, color: 'var(--danger-700)' }}>Listed on {blacklist.listed_count} blacklist{blacklist.listed_count > 1 ? 's' : ''}</h4>
+                    </div>
+                  </div>
+                  <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                    {blacklist.results.filter(r => r.listed).map((r, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', background: 'var(--danger-50)', borderRadius: 8, border: '1px solid var(--danger-100)' }}>
+                        <ShieldX size={15} color="var(--danger-500)" />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--danger-700)' }}>{r.name}</div>
+                          {r.returnCode && <div style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--danger-500)', marginTop: 2 }}>Return: {r.returnCode}</div>}
+                        </div>
+                        <span className="badge badge-danger">Listed</span>
+                      </div>
+                    ))}
+                    <div className="alert-banner danger" style={{ marginTop: '0.5rem' }}>
+                      <AlertTriangle size={15} />
+                      <span>Being blacklisted means your emails may go to spam or be rejected. Contact the blacklist operator to request delisting.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* All results table */}
+              <div className="card">
+                <div className="card-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <ShieldCheck size={16} />
+                    <h4 style={{ margin: 0 }}>All blacklist checks</h4>
+                  </div>
+                </div>
+                <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
+                  <table>
+                    <thead><tr><th>Blacklist</th><th>Type</th><th>Status</th></tr></thead>
+                    <tbody>
+                      {blacklist.results.map((r, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 500 }}>{r.name}</td>
+                          <td><span className="badge badge-neutral" style={{ fontSize: '0.6875rem' }}>{r.skipped ? 'skipped' : 'checked'}</span></td>
+                          <td>
+                            {r.listed
+                              ? <span className="badge badge-danger">Listed</span>
+                              : r.skipped
+                              ? <span className="badge badge-neutral">Skipped</span>
+                              : <span className="badge badge-success">Clean</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="card-footer">
+                  <button className="btn btn-secondary btn-sm" onClick={fetchBlacklist} disabled={blacklistLoading}>
+                    <RefreshCw size={13} /><span>Re-check blacklists</span>
+                  </button>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--neutral-400)' }}>
+                    Last checked: {new Date(blacklist.checked_at).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {!blacklistLoading && !blacklist && (
+            <div className="empty-state">
+              <ShieldCheck size={32} color="var(--neutral-300)" />
+              <p className="empty-title">Blacklist check</p>
+              <p className="empty-desc">Check if this domain or its IP is listed on major email blacklists</p>
+              <button className="btn btn-primary" onClick={fetchBlacklist}>
+                <ShieldCheck size={14} /><span>Run blacklist check</span>
+              </button>
             </div>
           )}
         </div>
