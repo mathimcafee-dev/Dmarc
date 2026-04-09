@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Shield, Globe, BarChart2, Settings, Users, LogOut,
   ChevronDown, Plus, Building2, Bell, HelpCircle,
-  Layout, Activity, Clock, AlertTriangle, Zap
+  Layout, Activity, Clock, AlertTriangle
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrg } from '../../hooks/useOrg'
@@ -17,7 +17,6 @@ const navSections = [
       { to: '/dashboard', icon: <Layout size={16} />, label: 'Dashboard' },
       { to: '/domains', icon: <Globe size={16} />, label: 'Domains' },
       { to: '/activity', icon: <Activity size={16} />, label: 'Activity' },
-      { to: '/tools', icon: <Zap size={16} />, label: 'Free Tools' },
     ],
   },
   {
