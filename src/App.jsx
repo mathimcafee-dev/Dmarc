@@ -18,7 +18,6 @@ import { AlertsPage } from './pages/AlertsPage'
 import { ActivityPage } from './pages/ActivityPage'
 import { MembersPage } from './pages/MembersPage'
 import { SettingsPage } from './pages/SettingsPage'
-import { ToolsPage } from './pages/ToolsPage'
 import './index.css'
 
 function Spinner() {
@@ -70,15 +69,16 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <Routes>
-            {/* Truly public — no login, no redirect */}
-            <Route path="/tools" element={<ToolsPage />} />
-
-            {/* Public only — redirect to dashboard if already logged in */}
+            {/* Public — redirects to dashboard if already logged in */}
             <Route element={<PublicRoute />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
             </Route>
+
+            {/* Onboarding */}
             <Route path="/onboarding" element={<OnboardingGuard />} />
+
+            {/* Protected app */}
             <Route element={<ProtectedLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
@@ -95,6 +95,7 @@ export default function App() {
               <Route path="/members" element={<MembersPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
+
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </AuthProvider>
