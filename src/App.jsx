@@ -70,10 +70,13 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <Routes>
+            {/* Truly public — no login, no redirect */}
+            <Route path="/tools" element={<ToolsPage />} />
+
+            {/* Public only — redirect to dashboard if already logged in */}
             <Route element={<PublicRoute />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
-              <Route path="/tools" element={<ToolsPage />} />
             </Route>
             <Route path="/onboarding" element={<OnboardingGuard />} />
             <Route element={<ProtectedLayout />}>
