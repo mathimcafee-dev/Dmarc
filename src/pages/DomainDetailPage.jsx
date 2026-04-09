@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Globe, Shield, Activity, CheckCircle, AlertTriangle,
-  RefreshCw, Copy, Clock, ExternalLink, ChevronRight
+  RefreshCw, Copy, Clock, ExternalLink, ChevronRight, Lightbulb, Zap
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useDomains } from '../hooks/useDomains'
@@ -49,6 +49,220 @@ function RecordBlock({ label, value, empty = 'No record found' }) {
         </button>
       </div>
       <div className="code-block" style={{ fontSize: '0.8125rem' }}>{value}</div>
+    </div>
+  )
+}
+
+function CopyRecord({ value }) {
+  const toast = useToast()
+  return (
+    <div style={{ position: 'relative' }}>
+      <div className="code-block" style={{ fontSize: '0.8125rem', paddingRight: '2.5rem' }}>{value}</div>
+      <button
+        className="btn btn-ghost btn-sm"
+        style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', padding: '0.25rem', background: 'rgba(255,255,255,0.1)' }}
+        onClick={() => { navigator.clipboard.writeText(value); toast('Copied to clipboard!', 'success') }}
+      >
+        <Copy size={13} />
+      </button>
+    </div>
+  )
+}
+
+function SuggestionCard({ priority, title, description, recordType, recordName, recordValue, why }) {
+  const [open, setOpen] = useState(false)
+  const colors = {
+    high:   { bg: 'var(--danger-50)',   border: 'var(--danger-200)',   badge: 'badge-danger',   dot: 'var(--danger-500)'   },
+    medium: { bg: 'var(--warning-50)',  border: 'var(--warning-200)',  badge: 'badge-warning',  dot: 'var(--warning-500)'  },
+    low:    { bg: 'var(--info-50)',     border: 'var(--info-500)',     badge: 'badge-info',     dot: 'var(--brand-500)'    },
+  }
+  const c = colors[priority] || colors.low
+
+  return (
+    <div style={{ border: `1px solid ${c.border}`, borderRadius: 'var(--radius-lg)', background: c.bg, overflow: 'hidden' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', padding: '1rem 1.25rem', cursor: 'pointer' }}
+        onClick={() => setOpen(p => !p)}
+      >
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.dot, flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--neutral-900)' }}>{title}</span>
+            <span className={`badge ${c.badge}`}>{priority} priority</span>
+          </div>
+          <div style={{ fontSize: '0.8125rem', color: 'var(--neutral-600)', marginTop: '0.125rem' }}>{description}</div>
+        </div>
+        <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); setOpen(true) }}>
+          <Zap size={13} /><span>Fix it</span>
+        </button>
+        <ChevronRight size={15} color="var(--neutral-400)" style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }} />
+      </div>
+
+      {open && (
+        <div style={{ padding: '0 1.25rem 1.25rem', borderTop: `1px solid ${c.border}` }}>
+          <div style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+            {/* Why this matters */}
+            <div style={{ padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.6)', borderRadius: 'var(--radius-sm)', fontSize: '0.875rem', color: 'var(--neutral-700)', lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--neutral-900)' }}>Why this matters:</strong> {why}
+            </div>
+
+            {/* DNS record to add */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-600)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.625rem' }}>
+                Add this DNS record
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr', gap: '0.5rem', marginBottom: '0.625rem' }}>
+                {[
+                  { label: 'Type', value: recordType },
+                  { label: 'Name / Host', value: recordName },
+                ].map(row => (
+                  <div key={row.label} style={{ display: 'contents' }}>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', alignSelf: 'center' }}>{row.label}</div>
+                    <div style={{ width: 1, background: 'var(--neutral-150)', margin: '0 0.25rem' }} />
+                    <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--neutral-800)', alignSelf: 'center' }}>{row.value}</code>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.375rem' }}>Value</div>
+              <CopyRecord value={recordValue} />
+            </div>
+
+            <div style={{ fontSize: '0.8125rem', color: 'var(--neutral-500)' }}>
+              Add this record at your domain registrar (GoDaddy, Cloudflare, Namecheap, etc.) then scan again to verify.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SuggestionsPanel({ domain, dmarc, spf, dkim, bimi }) {
+  const suggestions = []
+  const domainName = domain?.domain || 'yourdomain.com'
+
+  // No DMARC at all
+  if (!dmarc) {
+    suggestions.push({
+      priority: 'high',
+      title: 'Add DMARC record',
+      description: 'Your domain has no DMARC record — anyone can spoof emails from your domain.',
+      recordType: 'TXT',
+      recordName: `_dmarc.${domainName}`,
+      recordValue: `v=DMARC1; p=none; rua=mailto:mathivanan@easysecurity.in; ruf=mailto:mathivanan@easysecurity.in; fo=1`,
+      why: 'Without DMARC, attackers can send emails pretending to be from your domain. This harms your brand reputation and can trick your customers. Start with p=none to monitor, then move to p=reject once you verify all your email senders are covered.',
+    })
+  }
+
+  // DMARC exists but policy is none
+  if (dmarc?.policy === 'none') {
+    suggestions.push({
+      priority: 'medium',
+      title: 'Upgrade DMARC to p=quarantine',
+      description: 'Your DMARC is in monitor mode only — spoofed emails are still being delivered.',
+      recordType: 'TXT',
+      recordName: `_dmarc.${domainName}`,
+      recordValue: `v=DMARC1; p=quarantine; rua=mailto:mathivanan@easysecurity.in; pct=100; fo=1`,
+      why: 'p=none only watches — it does not protect. Upgrading to p=quarantine sends spoofed emails to spam instead of the inbox. Once confident, move to p=reject to block them entirely.',
+    })
+  }
+
+  // DMARC quarantine — suggest reject
+  if (dmarc?.policy === 'quarantine') {
+    suggestions.push({
+      priority: 'low',
+      title: 'Upgrade DMARC to p=reject',
+      description: 'Move to full enforcement — block spoofed emails completely.',
+      recordType: 'TXT',
+      recordName: `_dmarc.${domainName}`,
+      recordValue: `v=DMARC1; p=reject; rua=mailto:mathivanan@easysecurity.in; pct=100; fo=1`,
+      why: 'p=reject is the gold standard — spoofed emails are rejected before they reach any inbox. Only do this once you have confirmed SPF and DKIM are working for all your email senders.',
+    })
+  }
+
+  // No DMARC reporting configured
+  if (dmarc && (!dmarc.rua || dmarc.rua.length === 0)) {
+    suggestions.push({
+      priority: 'medium',
+      title: 'Add DMARC reporting (RUA)',
+      description: 'You have no aggregate reporting configured — you cannot see who is sending email as your domain.',
+      recordType: 'TXT',
+      recordName: `_dmarc.${domainName}`,
+      recordValue: `v=DMARC1; p=${dmarc.policy || 'none'}; rua=mailto:mathivanan@easysecurity.in; fo=1`,
+      why: 'DMARC reports tell you which mail servers are sending email using your domain — both legitimate and malicious. Without RUA reports you are flying blind.',
+    })
+  }
+
+  // No SPF
+  if (!spf) {
+    suggestions.push({
+      priority: 'high',
+      title: 'Add SPF record',
+      description: 'No SPF record found — receiving servers cannot verify your email senders.',
+      recordType: 'TXT',
+      recordName: `@`,
+      recordValue: `v=spf1 mx a include:_spf.google.com ~all`,
+      why: 'SPF tells receiving mail servers which servers are allowed to send email for your domain. Without it, your emails may land in spam and your domain is easier to spoof. The record above covers Google Workspace — adjust the includes for your actual email provider.',
+    })
+  }
+
+  // SPF over lookup limit
+  if (spf && !spf.is_valid) {
+    suggestions.push({
+      priority: 'high',
+      title: 'Fix SPF lookup limit exceeded',
+      description: `Your SPF record has ${spf.lookup_count} DNS lookups — maximum allowed is 10.`,
+      recordType: 'TXT',
+      recordName: `@`,
+      recordValue: `v=spf1 mx a ~all`,
+      why: 'When SPF exceeds 10 DNS lookups, the check fails completely — meaning SPF gives no protection and emails may be marked as spam. Remove unused includes or use an SPF flattening service.',
+    })
+  }
+
+  // No DKIM
+  if (dkim.length === 0) {
+    suggestions.push({
+      priority: 'medium',
+      title: 'Set up DKIM signing',
+      description: 'No DKIM record found — your emails lack a cryptographic signature.',
+      recordType: 'TXT',
+      recordName: `google._domainkey.${domainName}`,
+      recordValue: `Get this key from your email provider (Google Workspace, Microsoft 365, etc.) — each provider generates a unique DKIM key for your domain.`,
+      why: 'DKIM adds a digital signature to every email you send, proving it genuinely came from you and was not tampered with in transit. Your email provider (Google, Microsoft, etc.) will give you the exact record to add.',
+    })
+  }
+
+  // No BIMI (only suggest if DMARC is at least quarantine)
+  if (!bimi && dmarc?.policy && dmarc.policy !== 'none') {
+    suggestions.push({
+      priority: 'low',
+      title: 'Add BIMI — show your logo in Gmail',
+      description: 'Add a brand logo that appears next to your emails in Gmail and Apple Mail.',
+      recordType: 'TXT',
+      recordName: `default._bimi.${domainName}`,
+      recordValue: `v=BIMI1; l=https://easysecurity.in/logo.svg`,
+      why: 'BIMI (Brand Indicators for Message Identification) displays your company logo next to emails in supporting clients like Gmail. It increases brand trust and email open rates. You need a square SVG logo hosted on HTTPS.',
+    })
+  }
+
+  if (suggestions.length === 0) return (
+    <div className="alert-banner success" style={{ marginBottom: '1.5rem' }}>
+      <CheckCircle size={15} />
+      <span>Your domain is fully configured. All critical DNS records are in place.</span>
+    </div>
+  )
+
+  return (
+    <div style={{ marginBottom: '1.75rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <Lightbulb size={16} color="var(--warning-500)" />
+        <h3 style={{ margin: 0 }}>Suggested fixes</h3>
+        <span className="badge badge-warning">{suggestions.length} action{suggestions.length > 1 ? 's' : ''}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+        {suggestions.map((s, i) => <SuggestionCard key={i} {...s} />)}
+      </div>
     </div>
   )
 }
@@ -109,7 +323,6 @@ export function DomainDetailPage() {
     if (result.error) { toast(result.error.message, 'error'); return }
     toast(`Scan complete — health score: ${result.healthScore}`, 'success')
     fetchRecords()
-    // Refresh domain from store
     const d = domains.find(d => d.id === id)
     if (d) setDomain({ ...d, health_score: result.healthScore, last_checked_at: new Date().toISOString() })
   }
@@ -127,7 +340,6 @@ export function DomainDetailPage() {
 
   return (
     <div className="page-content fade-in">
-      {/* Back + header */}
       <button className="btn btn-ghost btn-sm" onClick={() => navigate('/domains')} style={{ marginBottom: '1.25rem', paddingLeft: '0.25rem' }}>
         <ArrowLeft size={15} /><span>All domains</span>
       </button>
@@ -162,6 +374,17 @@ export function DomainDetailPage() {
         </div>
       </div>
 
+      {/* Suggestions panel — always visible after scan */}
+      {!loading && (
+        <SuggestionsPanel
+          domain={domain}
+          dmarc={dmarc}
+          spf={spf}
+          dkim={dkim}
+          bimi={bimi}
+        />
+      )}
+
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: '1.5rem' }}>
         {['overview', 'dmarc', 'spf', 'dkim', 'bimi'].map(t => (
@@ -173,7 +396,6 @@ export function DomainDetailPage() {
 
       {activeTab === 'overview' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-          {/* Security Checklist */}
           <div className="card">
             <div className="card-header"><h4 style={{ margin: 0 }}>Security checklist</h4></div>
             <div className="card-body" style={{ padding: '0 1.5rem' }}>
@@ -187,7 +409,6 @@ export function DomainDetailPage() {
             </div>
           </div>
 
-          {/* Record summary */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="card">
               <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -246,7 +467,6 @@ export function DomainDetailPage() {
                 </div>
               </div>
 
-              {/* Policy journey */}
               <div className="card">
                 <div className="card-header"><h4 style={{ margin: 0 }}>Enforcement journey</h4></div>
                 <div className="card-body">
@@ -267,11 +487,7 @@ export function DomainDetailPage() {
                   {dmarc.policy !== 'reject' && (
                     <div className="alert-banner warning">
                       <AlertTriangle size={15} />
-                      <span>
-                        {dmarc.policy === 'none'
-                          ? 'p=none only monitors — emails from spoofed senders are still delivered. Move to p=quarantine or p=reject to enforce protection.'
-                          : 'p=quarantine moves suspicious emails to spam. Move to p=reject to fully block spoofed emails.'}
-                      </span>
+                      <span>{dmarc.policy === 'none' ? 'p=none only monitors — emails from spoofed senders are still delivered. Move to p=quarantine or p=reject to enforce protection.' : 'p=quarantine moves suspicious emails to spam. Move to p=reject to fully block spoofed emails.'}</span>
                     </div>
                   )}
                   {dmarc.policy === 'reject' && (
@@ -310,7 +526,6 @@ export function DomainDetailPage() {
                   <div className="stat-sub">configured senders</div>
                 </div>
               </div>
-
               <div className="card">
                 <div className="card-header"><h4 style={{ margin: 0 }}>SPF Mechanisms</h4></div>
                 <div className="table-wrap" style={{ border: 'none', borderRadius: 0 }}>
