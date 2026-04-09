@@ -5,7 +5,7 @@ import { useOrg } from '../../hooks/useOrg'
 const PAGE_TITLES = {
   '/dashboard': { title: 'Dashboard', desc: 'Overview of your DNS health' },
   '/domains': { title: 'Domains', desc: 'Manage and monitor your domains' },
-  '/activity': { title: 'Activity', desc: 'Recent scans, changes and actions' },
+  '/tools':    { title: 'Free Tools', desc: 'DMARC, SPF, DKIM & MX lookup — no login required' },
   '/dmarc': { title: 'DMARC', desc: 'DMARC policy management & lookup' },
   '/reports': { title: 'DMARC Reports', desc: 'Aggregate report (RUA) analysis' },
   '/spf': { title: 'SPF Records', desc: 'Sender Policy Framework' },
