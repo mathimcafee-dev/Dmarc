@@ -96,28 +96,30 @@ module.exports = async function handler(req, res) {
   const safeDomain = domain.replace(/[^a-zA-Z0-9.-]/g, '')
 
   try {
-    const [dmarcAns, spfAns, mxAns, bimiAns, dkimDefAns, dkimGoogAns, dkimSel1Ans, dkimSel2Ans] =
+    const DKIM_SELECTORS = [
+      'default', 'google', 'selector1', 'selector2',
+      'mail', 'email', 'k1', 'k2', 's1', 's2',
+      'dkim', 'mimecast', 'mailjet', 'sendgrid',
+      'smtp', 'amazonses', 'mandrill', 'mailchimp',
+      'zoho', 'outlook',
+    ]
+
+    const [dmarcAns, spfAns, mxAns, bimiAns, ...dkimAnswers] =
       await Promise.all([
         dnsLookup(`_dmarc.${safeDomain}`, 'TXT'),
         dnsLookup(safeDomain, 'TXT'),
         dnsLookup(safeDomain, 'MX'),
         dnsLookup(`default._bimi.${safeDomain}`, 'TXT'),
-        dnsLookup(`default._domainkey.${safeDomain}`, 'TXT'),
-        dnsLookup(`google._domainkey.${safeDomain}`, 'TXT'),
-        dnsLookup(`selector1._domainkey.${safeDomain}`, 'TXT'),
-        dnsLookup(`selector2._domainkey.${safeDomain}`, 'TXT'),
+        ...DKIM_SELECTORS.map(s => dnsLookup(`${s}._domainkey.${safeDomain}`, 'TXT')),
       ])
 
     const dmarcRaw = extractTxt(dmarcAns, 'v=dmarc1')
     const spfRaw   = extractTxt(spfAns,   'v=spf1')
     const bimiRaw  = extractTxt(bimiAns,  'v=bimi1')
 
-    const dkimSelectors = [
-      { selector: 'default',   answers: dkimDefAns  },
-      { selector: 'google',    answers: dkimGoogAns  },
-      { selector: 'selector1', answers: dkimSel1Ans  },
-      { selector: 'selector2', answers: dkimSel2Ans  },
-    ].filter(d => d.answers.some(a => a.data?.includes('v=DKIM1')))
+    const dkimSelectors = DKIM_SELECTORS
+      .map((selector, i) => ({ selector, answers: dkimAnswers[i] || [] }))
+      .filter(d => d.answers.some(a => a.data?.includes('v=DKIM1')))
 
     const dmarc   = parseDMARC(dmarcRaw)
     const spf     = parseSPF(spfRaw)
