@@ -20,6 +20,7 @@ import { MembersPage } from './pages/MembersPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SVGConverterPage } from './pages/SVGConverterPage'
 import { BIMIPreviewPage } from './pages/BIMIPreviewPage'
+import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import './index.css'
 
 function Spinner() {
@@ -72,6 +73,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             {/* Public — redirects to dashboard if already logged in */}
+            <Route path="/accept-invite" element={<AcceptInvitePage />} />
             <Route element={<PublicRoute />}>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
