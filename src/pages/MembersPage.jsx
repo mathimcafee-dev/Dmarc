@@ -19,14 +19,15 @@ function RoleBadge({ role }) {
 }
 
 export function MembersPage() {
-  const { currentOrg, isAdmin, isOwner, inviteMember } = useOrg()
+  const { currentOrg, isAdmin, isOwner } = useOrg()
   const { user } = useAuth()
   const toast = useToast()
   const [members, setMembers] = useState([])
   const [invitations, setInvitations] = useState([])
   const [loading, setLoading] = useState(true)
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [inviteForm, setInviteForm] = useState({ email: '', role: 'member' })
+  const [inviteForm, setInviteForm] = useState({ email: '', role: 'member', password: '' })
+  const [showInvitePwd, setShowInvitePwd] = useState(false)
   const [inviting, setInviting] = useState(false)
 
   useEffect(() => {
@@ -67,18 +68,44 @@ export function MembersPage() {
 
   async function handleInvite(e) {
     e.preventDefault()
-    setInviting(true)
-    const { error, emailError } = await inviteMember(inviteForm.email, inviteForm.role)
-    setInviting(false)
-    if (error) { toast(error.message, 'error'); return }
-    if (emailError) {
-      toast(`Invitation saved but email failed: ${emailError}`, 'error')
-    } else {
-      toast(`Invitation sent to ${inviteForm.email}`, 'success')
+    if (!inviteForm.password || inviteForm.password.length < 6) {
+      toast('Password must be at least 6 characters', 'error')
+      return
     }
-    setInviteOpen(false)
-    setInviteForm({ email: '', role: 'member' })
-    fetchInvitations()
+    setInviting(true)
+    try {
+      const res = await fetch('/api/invite-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email:     inviteForm.email,
+          role:      inviteForm.role,
+          password:  inviteForm.password,
+          orgId:     currentOrg.id,
+          orgName:   currentOrg.name,
+          invitedBy: user?.email || 'An admin',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast(data.error || 'Failed to invite member', 'error')
+        setInviting(false)
+        return
+      }
+      if (!data.emailSent) {
+        toast(`${inviteForm.email} added to org. Email delivery failed — share credentials manually.`, 'error')
+      } else {
+        toast(`${inviteForm.email} has been added and received their login credentials.`, 'success')
+      }
+      setInviteOpen(false)
+      setInviteForm({ email: '', role: 'member', password: '' })
+      setShowInvitePwd(false)
+      fetchMembers()
+      fetchInvitations()
+    } catch (err) {
+      toast(err.message || 'Failed to invite member', 'error')
+    }
+    setInviting(false)
   }
 
   async function revokeInvitation(id) {
@@ -224,14 +251,14 @@ export function MembersPage() {
       {/* Invite Modal */}
       <Modal
         open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        title="Invite team member"
-        subtitle="They'll receive an email with a link to join your organisation."
+        onClose={() => { setInviteOpen(false); setInviteForm({ email: '', role: 'member', password: '' }); setShowInvitePwd(false) }}
+        title="Add team member"
+        subtitle="Their account will be created immediately. They'll receive an email with their login credentials."
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setInviteOpen(false)}>Cancel</button>
+            <button className="btn btn-secondary" onClick={() => { setInviteOpen(false); setInviteForm({ email: '', role: 'member', password: '' }); setShowInvitePwd(false) }}>Cancel</button>
             <button form="invite-form" type="submit" className={`btn btn-primary ${inviting ? 'btn-loading' : ''}`} disabled={inviting}>
-              {!inviting && 'Send invitation'}
+              {!inviting && 'Create account & send email'}
             </button>
           </>
         }
@@ -245,6 +272,29 @@ export function MembersPage() {
             </div>
           </div>
           <div className="form-group">
+            <label className="form-label">Temporary password</label>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                style={{ paddingRight: '2.5rem' }}
+                type={showInvitePwd ? 'text' : 'password'}
+                placeholder="Min. 6 characters"
+                value={inviteForm.password}
+                onChange={e => setInviteForm(p => ({ ...p, password: e.target.value }))}
+                required
+                minLength={6}
+              />
+              <button type="button" onClick={() => setShowInvitePwd(p => !p)}
+                style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', display: 'flex', padding: 0 }}>
+                {showInvitePwd
+                  ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                  : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                }
+              </button>
+            </div>
+            <span className="form-hint">They can change this password from Settings after logging in.</span>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Role</label>
             <select className="input select" value={inviteForm.role} onChange={e => setInviteForm(p => ({ ...p, role: e.target.value }))}>
               <option value="admin">Admin — Manage domains and members</option>
