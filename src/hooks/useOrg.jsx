@@ -66,12 +66,35 @@ export function OrgProvider({ children }) {
 
   async function inviteMember(email, role = 'member') {
     if (!currentOrg) return { error: { message: 'No org selected' } }
+
+    // Save invitation to database
     const { data, error } = await supabase
       .from('org_invitations')
       .upsert({ org_id: currentOrg.id, email, role, invited_by: user.id })
       .select()
       .single()
-    return { data, error }
+
+    if (error) return { data, error }
+
+    // Send invitation email via API
+    try {
+      await fetch('/api/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          orgName: currentOrg.name,
+          role,
+          invitedBy: profile?.full_name || user?.email || 'A team member',
+          inviteId: data?.id,
+        }),
+      })
+    } catch (emailErr) {
+      console.warn('Invite email failed to send:', emailErr)
+      // Don't block — invitation is saved, email is best-effort
+    }
+
+    return { data, error: null }
   }
 
   async function updateOrg(updates) {
