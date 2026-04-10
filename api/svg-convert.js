@@ -1,11 +1,12 @@
 const potrace = require('potrace')
+const jimp = require('jimp')
+const Jimp = jimp.Jimp
+const JimpMime = jimp.JimpMime
 
 // ── Colour complexity detection ───────────────────────────────────────────────
 async function analyzeImage(buf) {
-  const { Jimp } = require('jimp')
   const img = await Jimp.read(buf)
 
-  // Resize for analysis
   if (img.width > 512 || img.height > 512) {
     img.resize({ w: 512, h: 512 })
   }
@@ -30,15 +31,12 @@ async function analyzeImage(buf) {
 
 // ── Colour-aware tracing ──────────────────────────────────────────────────────
 async function traceWithColours(buf, maxColours = 8) {
-  const { Jimp, JimpMime } = require('jimp')
   const { img, colorMap, uniqueColors } = await analyzeImage(buf)
 
-  // Too many colours = photo/complex image
   if (uniqueColors > 60) {
     return { complex: true, uniqueColors }
   }
 
-  // Get dominant colours — skip near-white (background)
   const dominantColors = [...colorMap.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxColours)
@@ -51,7 +49,6 @@ async function traceWithColours(buf, maxColours = 8) {
     })
     .filter(c => !(c.r > 210 && c.g > 210 && c.b > 210))
 
-  // Trace each colour layer separately
   const layers = []
   for (const color of dominantColors) {
     const mask = img.clone()
@@ -78,14 +75,12 @@ async function traceWithColours(buf, maxColours = 8) {
         }, (err, s) => err ? rej(err) : res(s))
       })
 
-      const pathMatches = svg.match(/<path[^/]*/g)
-      if (pathMatches && pathMatches.length > 0) {
-        // Extract path data and apply correct fill colour
-        const inner = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i)?.[1] || ''
-        const cleanedPaths = inner
+      const innerMatch = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i)
+      if (innerMatch) {
+        const inner = innerMatch[1]
           .replace(/fill="[^"]*"/g, `fill="${color.hex}"`)
           .trim()
-        if (cleanedPaths) layers.push(cleanedPaths)
+        if (inner) layers.push(inner)
       }
     } catch { /* skip failed layers */ }
   }
@@ -96,7 +91,7 @@ async function traceWithColours(buf, maxColours = 8) {
 // ── VMC SVG cleanup ───────────────────────────────────────────────────────────
 function makeVMCCompliant(svgText, companyName) {
   const vbMatch = svgText.match(/viewBox=["']([^"']+)["']/)
-  let viewBox = vbMatch ? vbMatch[1] : '0 0 100 100'
+  let viewBox = vbMatch ? vbMatch[1] : '0 0 500 500'
   const parts = viewBox.trim().split(/[\s,]+/).map(Number)
 
   if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
@@ -107,7 +102,6 @@ function makeVMCCompliant(svgText, companyName) {
   const innerMatch = svgText.match(/<svg[^>]*>([\s\S]*)<\/svg>/i)
   let inner = innerMatch ? innerMatch[1] : ''
 
-  // Remove forbidden elements
   inner = inner
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<image[\s\S]*?\/>/gi, '')
@@ -127,7 +121,7 @@ ${inner.trim()}
 </svg>`
 }
 
-// ── Single colour trace (fallback) ────────────────────────────────────────────
+// ── Single colour trace fallback ──────────────────────────────────────────────
 function traceSingleColor(buffer, color) {
   return new Promise((resolve, reject) => {
     potrace.trace(buffer, {
@@ -158,36 +152,27 @@ module.exports = async function handler(req, res) {
 
     const buffer = Buffer.from(data, 'base64')
     let svgText
-    let isComplex = false
-    let colorCount = 0
 
     if (mimeType === 'image/svg+xml') {
-      // SVG — just clean it up, preserve all colours
       svgText = buffer.toString('utf8')
 
     } else if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-      // Try colour-aware tracing first
       const result = await traceWithColours(buffer)
 
       if (result.complex) {
-        isComplex = true
-        colorCount = result.uniqueColors
         return res.status(422).json({
           error: 'complex_image',
-          message: `This image has too many colours (${result.uniqueColors} colour variations) to convert automatically. VMC logos must be simple flat-colour vector designs. Please use a flat version of your logo with 2–8 solid colours.`,
+          message: `This image has too many colour variations (${result.uniqueColors} detected) to convert automatically. VMC logos must be simple flat-colour designs with 2–8 solid colours. Please use a flat version of your brand logo.`,
           uniqueColors: result.uniqueColors,
         })
       }
 
       if (result.layers && result.layers.length > 0) {
-        // Build coloured SVG from layers
-        const size = 500
-        svgText = `<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 ${size} ${size}">
+        svgText = `<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 500 500">
 <title>${(companyName || 'Brand Logo').replace(/[<>&"]/g, '')}</title>
 ${result.layers.join('\n')}
 </svg>`
       } else {
-        // Fallback: single colour trace
         const traced = await traceSingleColor(buffer, color || '#000000')
         svgText = traced
       }
@@ -196,18 +181,16 @@ ${result.layers.join('\n')}
       return res.status(400).json({ error: `Unsupported format: ${mimeType}` })
     }
 
-    // Apply VMC compliance
     const vmcSvg = makeVMCCompliant(svgText, companyName)
     const sizeBytes = Buffer.byteLength(vmcSvg, 'utf8')
-    const over32KB = sizeBytes > 32768
 
     return res.status(200).json({
       svg: vmcSvg,
       sizeBytes,
       sizeKB: (sizeBytes / 1024).toFixed(1),
-      compliant: !over32KB,
-      over32KB,
-      warning: over32KB ? 'File exceeds 32KB limit. Simplify your logo design for VMC compliance.' : null,
+      compliant: sizeBytes <= 32768,
+      over32KB: sizeBytes > 32768,
+      warning: sizeBytes > 32768 ? 'File exceeds 32KB. Simplify your logo for full VMC compliance.' : null,
     })
 
   } catch (err) {
