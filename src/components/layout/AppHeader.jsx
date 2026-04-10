@@ -8,6 +8,8 @@ const PAGE_TITLES = {
   '/tools':         { title: 'Free Tools', desc: 'DMARC, SPF, DKIM & MX lookup — no login required' },
   '/svg-converter': { title: 'SVG VMC Converter',    desc: 'Convert your logo to BIMI/VMC compliant SVG format' },
   '/bimi-preview':  { title: 'BIMI Email Preview',    desc: 'See how your logo appears across 10 email clients' },
+  '/vmc-advisor':   { title: 'Trusted VMC Advisor',   desc: 'Check readiness for a Verified Mark Certificate' },
+  '/email-headers': { title: 'Email Header Analyser', desc: 'Check authentication, delivery path and spam signals' },
   '/dmarc': { title: 'DMARC', desc: 'DMARC policy management & lookup' },
   '/reports': { title: 'DMARC Reports', desc: 'Aggregate report (RUA) analysis' },
   '/spf': { title: 'SPF Records', desc: 'Sender Policy Framework' },
