@@ -413,6 +413,7 @@ function LoginSection({ loginRef }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
+  const [focused, setFocused] = useState(false)
 
   async function handleSignIn(e) {
     e.preventDefault(); setError(''); setLoading(true)
@@ -470,7 +471,7 @@ function LoginSection({ loginRef }) {
               {/* Tabs */}
               <div style={{ display: 'flex', background: C.slate100, borderRadius: 10, padding: 3, marginBottom: 24 }}>
                 {[['signin', 'Sign in'], ['signup', 'Create account']].map(([id, label]) => (
-                  <button key={id} onClick={() => { setTab(id); setError('') }} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none', background: tab === id ? C.white : 'transparent', color: tab === id ? C.text : C.slate400, transition: 'all 0.15s' }}>
+                  <button key={id} onClick={() => { setTab(id); setError(''); setFocused(false) }} style={{ flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', border: 'none', background: tab === id ? C.white : 'transparent', color: tab === id ? C.text : C.slate400, transition: 'all 0.15s' }}>
                     {label}
                   </button>
                 ))}
@@ -493,7 +494,7 @@ function LoginSection({ loginRef }) {
                   <label style={{ fontSize: 11, fontWeight: 700, color: C.slate700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Email address</label>
                   <div style={{ position: 'relative' }}>
                     <Mail size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.slate300 }} />
-                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="email" placeholder="you@company.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} autoComplete="username" required />
+                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="email" placeholder="you@company.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} autoComplete="username" readOnly={!focused} onFocus={() => setFocused(true)} required />
                   </div>
                 </div>
 
@@ -504,7 +505,7 @@ function LoginSection({ loginRef }) {
                   </div>
                   <div style={{ position: 'relative' }}>
                     <Lock size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.slate300 }} />
-                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 40, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type={showPwd ? 'text' : 'password'} placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'} value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} autoComplete={tab === 'signin' ? 'current-password' : 'new-password'} required minLength={tab === 'signup' ? 8 : undefined} />
+                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 40, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type={showPwd ? 'text' : 'password'} placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'} value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} autoComplete={tab === 'signin' ? 'current-password' : 'new-password'} readOnly={!focused} onFocus={() => setFocused(true)} required minLength={tab === 'signup' ? 8 : undefined} />
                     <button type="button" onClick={() => setShowPwd(p => !p)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.slate300, display: 'flex' }}>
                       {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
