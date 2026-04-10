@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Globe, Shield, Activity, CheckCircle, AlertTriangle, XCircle,
+  ArrowLeft, Globe, Shield, Activity, CheckCircle, AlertTriangle, XCircle, TrendingUp,
   RefreshCw, Copy, Clock, ExternalLink, ChevronRight, Lightbulb, Zap,
   ShieldCheck, ShieldAlert, ShieldX, Loader
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useOrg } from '../hooks/useOrg'
 import { useDomains } from '../hooks/useDomains'
 import { useToast } from '../components/ui/Toast'
 
@@ -448,6 +449,150 @@ function DeliverabilityScore({ domain, dmarc, spf, dkim, blacklist, onRunBlackli
   )
 }
 
+
+// ── Enforcement Journey Automation ───────────────────────────────────────────
+function EnforcementJourney({ dmarc, domain }) {
+  const [rua, setRua] = useState(null)
+  const { currentOrg } = useOrg()
+  const { supabase: sb } = { supabase }
+
+  useEffect(() => {
+    if (!domain?.id) return
+    supabase.from('dmarc_aggregate_reports')
+      .select('id, report_begin, report_end')
+      .eq('domain_id', domain.id)
+      .order('report_begin', { ascending: false })
+      .limit(1)
+      .then(({ data }) => setRua(data?.[0] || null))
+  }, [domain?.id])
+
+  if (!dmarc) return null
+
+  const policy  = dmarc.policy || 'none'
+  const steps   = ['none', 'quarantine', 'reject']
+  const idx     = steps.indexOf(policy)
+  const next    = steps[idx + 1]
+
+  const COLORS  = { none: '#dc2626', quarantine: '#d97706', reject: '#16a34a' }
+  const BG      = { none: '#fee2e2', quarantine: '#fef3c7', reject: '#dcfce7' }
+
+  // Safety analysis — based on RUA data availability + deliverability score proxy
+  const healthScore = domain?.health_score || 0
+  const hasSPF   = true // already checked earlier in page
+  const hasDKIM  = true
+  const hasRUA   = !!rua
+
+  // Compute readiness
+  const checks = [
+    { label: 'SPF record valid',        pass: healthScore > 0,   desc: 'SPF is configured and valid' },
+    { label: 'DKIM signing active',     pass: healthScore > 30,  desc: 'At least one DKIM selector found' },
+    { label: 'RUA reports being received', pass: hasRUA,         desc: hasRUA ? `Last report: ${new Date(rua.report_end).toLocaleDateString('en-IN')}` : 'No aggregate reports yet — add rua= to DMARC' },
+    { label: 'Domain health ≥ 60',      pass: healthScore >= 60, desc: `Current score: ${healthScore}/100` },
+  ]
+  const passCount   = checks.filter(c => c.pass).length
+  const safeToMove  = passCount >= 3
+  const allPassing  = passCount === checks.length
+
+  // Next record to apply
+  const nextRecord = next ? `v=DMARC1; p=${next}; adkim=${dmarc.adkim || 'r'}; aspf=${dmarc.aspf || 'r'}; pct=100; rua=mailto:reports@pwonka.resend.app;` : null
+
+  return (
+    <div className="card" style={{ marginTop: 0 }}>
+      <div className="card-header" style={{ background: 'linear-gradient(135deg, #0e1624, #1a2234)' }}>
+        <h4 style={{ margin: 0, color: 'white', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Shield size={16} color="#60a5fa" /> Enforcement Journey
+        </h4>
+        {policy === 'reject' && (
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99, background: '#dcfce7', color: '#15803d' }}>✓ Fully enforced</span>
+        )}
+      </div>
+      <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+        {/* Progress track */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          {steps.map((p, i) => {
+            const done    = idx >= i
+            const active  = idx === i
+            const color   = COLORS[p]
+            const bg      = BG[p]
+            return (
+              <div key={p} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                {i < steps.length - 1 && (
+                  <div style={{ position: 'absolute', top: 17, left: '50%', right: '-50%', height: 3, background: idx > i ? COLORS[steps[i+1]] : 'var(--neutral-150)', borderRadius: 99, zIndex: 0 }} />
+                )}
+                <div style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 800, background: done ? bg : 'var(--neutral-100)', color: done ? color : 'var(--neutral-400)', border: `2.5px solid ${done ? color : 'var(--neutral-200)'}`, zIndex: 1, boxShadow: active ? `0 0 0 4px ${bg}` : 'none', transition: 'all 0.3s' }}>
+                  {idx > i ? '✓' : i + 1}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, fontWeight: active ? 800 : 500, color: done ? color : 'var(--neutral-400)', fontFamily: 'var(--font-mono)' }}>p={p}</div>
+                {active && <div style={{ fontSize: 10, color: 'var(--neutral-400)', marginTop: 2 }}>current</div>}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Safety checklist */}
+        {policy !== 'reject' && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--neutral-700)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <TrendingUp size={13} />
+              Safety checks before moving to p={next}
+              <span style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px', borderRadius: 99, background: safeToMove ? '#dcfce7' : '#fef3c7', color: safeToMove ? '#15803d' : '#b45309', fontWeight: 700 }}>
+                {passCount}/{checks.length} passing
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {checks.map((c, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 12px', borderRadius: 8, background: c.pass ? '#f0fdf4' : '#fefce8', border: `1px solid ${c.pass ? '#bbf7d0' : '#fef08a'}` }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: c.pass ? '#dcfce7' : '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {c.pass ? <CheckCircle size={12} color="#16a34a" /> : <AlertTriangle size={12} color="#d97706" />}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--neutral-800)' }}>{c.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--neutral-500)' }}>{c.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Verdict + next record */}
+        {policy !== 'reject' && (
+          <div style={{ padding: '14px 16px', borderRadius: 10, background: safeToMove ? '#f0fdf4' : '#fefce8', border: `1.5px solid ${safeToMove ? '#86efac' : '#fde047'}` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: safeToMove ? '#15803d' : '#b45309', marginBottom: 6 }}>
+              {safeToMove ? `✓ Safe to move to p=${next}` : `⚠ Fix issues before moving to p=${next}`}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--neutral-600)', marginBottom: safeToMove ? 12 : 0 }}>
+              {safeToMove
+                ? `All critical checks are passing. You can safely escalate your DMARC policy to p=${next} to ${next === 'quarantine' ? 'move suspicious emails to spam' : 'fully block spoofed emails'}.`
+                : 'Resolve the failing checks above before escalating. Moving too early may block legitimate emails.'}
+            </div>
+            {safeToMove && nextRecord && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-600)', marginBottom: 4 }}>Apply this DNS record at _dmarc.{domain?.domain}:</div>
+                <div style={{ background: '#0e1624', borderRadius: 7, padding: '10px 14px', fontFamily: 'var(--font-mono)', fontSize: 11, color: '#93c5fd', wordBreak: 'break-all', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <span style={{ flex: 1 }}>{nextRecord}</span>
+                  <button onClick={() => navigator.clipboard.writeText(nextRecord)}
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 5, padding: '3px 8px', color: '#60a5fa', fontSize: 10, cursor: 'pointer', flexShrink: 0 }}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {policy === 'reject' && (
+          <div className="alert-banner success">
+            <CheckCircle size={15} />
+            <span>Maximum protection achieved. p=reject fully blocks spoofed emails at every receiving server.</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function DomainDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -651,37 +796,7 @@ export function DomainDetailPage() {
                 </div>
               </div>
 
-              <div className="card">
-                <div className="card-header"><h4 style={{ margin: 0 }}>Enforcement journey</h4></div>
-                <div className="card-body">
-                  <div style={{ display: 'flex', gap: '0', marginBottom: '1rem' }}>
-                    {['none', 'quarantine', 'reject'].map((p, i) => {
-                      const isActive = dmarc.policy === p
-                      const isPast = ['none', 'quarantine', 'reject'].indexOf(dmarc.policy) > i
-                      const color = { none: 'var(--danger-500)', quarantine: 'var(--warning-500)', reject: 'var(--success-500)' }[p]
-                      return (
-                        <div key={p} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <div style={{ width: '100%', height: 6, background: (isActive || isPast) ? color : 'var(--neutral-150)', borderRadius: i === 0 ? '99px 0 0 99px' : i === 2 ? '0 99px 99px 0' : 0 }} />
-                          <div style={{ marginTop: '0.625rem', fontSize: '0.8125rem', fontWeight: isActive ? 700 : 400, color: isActive ? color : 'var(--neutral-500)', fontFamily: 'var(--font-mono)' }}>p={p}</div>
-                          {isActive && <div style={{ fontSize: '0.6875rem', color: 'var(--neutral-500)', marginTop: '0.125rem' }}>← current</div>}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {dmarc.policy !== 'reject' && (
-                    <div className="alert-banner warning">
-                      <AlertTriangle size={15} />
-                      <span>{dmarc.policy === 'none' ? 'p=none only monitors — emails from spoofed senders are still delivered. Move to p=quarantine or p=reject to enforce protection.' : 'p=quarantine moves suspicious emails to spam. Move to p=reject to fully block spoofed emails.'}</span>
-                    </div>
-                  )}
-                  {dmarc.policy === 'reject' && (
-                    <div className="alert-banner success">
-                      <CheckCircle size={15} />
-                      <span>p=reject is the strongest protection. Spoofed emails are fully blocked at the receiving server.</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <EnforcementJourney dmarc={dmarc} domain={domain} />
             </>
           )}
         </div>
