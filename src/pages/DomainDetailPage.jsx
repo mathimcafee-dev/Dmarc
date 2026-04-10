@@ -703,16 +703,6 @@ export function DomainDetailPage() {
         </div>
       </div>
 
-      {/* Suggestions panel — always visible after scan */}
-      {!loading && (
-        <SuggestionsPanel
-          domain={domain}
-          dmarc={dmarc}
-          spf={spf}
-          dkim={dkim}
-          bimi={bimi}
-        />
-      )}
 
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: '1.5rem' }}>
@@ -797,6 +787,7 @@ export function DomainDetailPage() {
               </div>
 
               <EnforcementJourney dmarc={dmarc} domain={domain} />
+              <SuggestionsPanel domain={domain} dmarc={dmarc} spf={spf} dkim={dkim} bimi={bimi} />
             </>
           )}
         </div>
