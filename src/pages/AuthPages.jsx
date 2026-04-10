@@ -478,13 +478,13 @@ function LoginSection({ loginRef }) {
 
               {error && <div style={{ fontSize: 13, color: C.danger, padding: '10px 14px', background: C.dangerFaint, border: `1px solid ${C.dangerBorder}`, borderRadius: 8, marginBottom: 16, display: 'flex', gap: 8, alignItems: 'flex-start' }}><AlertTriangle size={15} style={{ flexShrink: 0, marginTop: 1 }} />{error}</div>}
 
-              <form onSubmit={tab === 'signin' ? handleSignIn : handleSignUp} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <form onSubmit={tab === 'signin' ? handleSignIn : handleSignUp} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                 {tab === 'signup' && (
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ fontSize: 11, fontWeight: 700, color: C.slate700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Full name</label>
                     <div style={{ position: 'relative' }}>
                       <User size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.slate300 }} />
-                      <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="text" placeholder="Your name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
+                      <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="text" placeholder="Your name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoComplete="off" required />
                     </div>
                   </div>
                 )}
@@ -493,7 +493,7 @@ function LoginSection({ loginRef }) {
                   <label style={{ fontSize: 11, fontWeight: 700, color: C.slate700, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Email address</label>
                   <div style={{ position: 'relative' }}>
                     <Mail size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.slate300 }} />
-                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="email" placeholder="you@company.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} required />
+                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 12, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type="email" placeholder="you@company.com" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} autoComplete="username" required />
                   </div>
                 </div>
 
@@ -504,7 +504,7 @@ function LoginSection({ loginRef }) {
                   </div>
                   <div style={{ position: 'relative' }}>
                     <Lock size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.slate300 }} />
-                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 40, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type={showPwd ? 'text' : 'password'} placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'} value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} required minLength={tab === 'signup' ? 8 : undefined} />
+                    <input style={{ width: '100%', height: 42, border: `1.5px solid ${C.slate200}`, borderRadius: 8, paddingLeft: 36, paddingRight: 40, fontSize: 14, color: C.text, background: C.white, outline: 'none', fontFamily: 'inherit' }} type={showPwd ? 'text' : 'password'} placeholder={tab === 'signup' ? 'Min. 8 characters' : '••••••••'} value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} autoComplete={tab === 'signin' ? 'current-password' : 'new-password'} required minLength={tab === 'signup' ? 8 : undefined} />
                     <button type="button" onClick={() => setShowPwd(p => !p)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: C.slate300, display: 'flex' }}>
                       {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
