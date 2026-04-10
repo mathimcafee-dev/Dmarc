@@ -152,6 +152,14 @@ export function SVGConverterPage() {
         }),
       })
       const data = await res.json()
+
+      // Handle complex image — too many colours
+      if (res.status === 422 && data.error === 'complex_image') {
+        setError(data.message)
+        setConverting(false)
+        return
+      }
+
       if (data.error) throw new Error(data.error)
       setConverted(data.svg)
       setAnalysis(analyseSVG(data.svg))
@@ -315,7 +323,7 @@ export function SVGConverterPage() {
           {/* Convert button */}
           {step === 'ready' && (
             <button className={`btn btn-primary btn-lg ${converting ? 'btn-loading' : ''}`} onClick={handleConvert} disabled={converting} style={{ width: '100%' }}>
-              {!converting && <><Zap size={16} /><span>{isBitmap ? `Trace & convert ${TYPE_LABEL[mimeType]} to VMC SVG` : 'Convert to VMC compliant SVG'}</span></>}
+              {!converting && <><Zap size={16} /><span>{isBitmap ? `Convert ${TYPE_LABEL[mimeType]} to coloured VMC SVG` : 'Convert to VMC compliant SVG'}</span></>}
               {converting && <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /><span>Converting…</span><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style></>}
             </button>
           )}
@@ -359,7 +367,7 @@ export function SVGConverterPage() {
             {isBitmap && step === 'ready' && (
               <div className="alert-banner warning">
                 <Zap size={15} />
-                <span>PNG/JPG files are automatically traced into clean vector paths using potrace. The converter will apply your chosen colour and make the output fully VMC compliant.</span>
+                <span>Flat logos with 2–8 solid colours convert best. Photos or complex images with many colours cannot be automatically converted to VMC SVG — a flat logo design is required.</span>
               </div>
             )}
 
