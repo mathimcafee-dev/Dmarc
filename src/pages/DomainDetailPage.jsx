@@ -738,7 +738,7 @@ export function DomainDetailPage() {
       {activeTab === 'dkim' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {dkim.length === 0 ? (
-            <div className="alert-banner warning"><AlertTriangle size={15} /><span>No DKIM selectors found for common selectors (default, google). Scan to try more selectors.</span></div>
+            <div className="alert-banner warning"><AlertTriangle size={15} /><span>No DKIM records found across 20 common selectors (Google, Mailchimp, SendGrid, Outlook, Zoho and more). If you use a custom selector, contact support.</span></div>
           ) : (
             dkim.map(dk => (
               <div key={dk.id} className="card">
