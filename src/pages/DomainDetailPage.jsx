@@ -593,6 +593,275 @@ function EnforcementJourney({ dmarc, domain }) {
   )
 }
 
+
+// ── BIMI Auto-Validator (Trusted VMC Advisor) ───────────────────────────────
+function BIMIValidator({ domain, dmarc, spf, dkim, bimi }) {
+  const [svgValid, setSvgValid]     = useState(null) // null=unchecked, true, false
+  const [svgChecking, setSvgCheck]  = useState(false)
+  const [svgError, setSvgError]     = useState('')
+  const [converting, setConverting] = useState(false)
+  const [converted, setConverted]   = useState(null)
+  const navigate = useNavigate()
+
+  const domainName  = domain?.domain || ''
+  const policy      = dmarc?.policy
+  const hasSPF      = !!spf?.is_valid
+  const hasDKIM     = dkim?.length > 0
+  const hasReject   = policy === 'reject'
+  const hasBIMI     = !!bimi
+  const logoUrl     = bimi?.logo_url || ''
+  const isHTTPS     = logoUrl.startsWith('https://')
+  const hasVMC      = !!(bimi?.vmc_url)
+
+  // Auto-check SVG on mount if BIMI exists
+  useEffect(() => {
+    if (logoUrl && isHTTPS) checkSVG(logoUrl)
+  }, [logoUrl])
+
+  async function checkSVG(url) {
+    setSvgCheck(true); setSvgValid(null); setSvgError('')
+    try {
+      const res  = await fetch(`/api/validate-svg?url=${encodeURIComponent(url)}`)
+      const data = await res.json()
+      setSvgValid(data.valid)
+      setSvgError(data.error || '')
+    } catch { setSvgValid(false); setSvgError('Could not fetch SVG') }
+    setSvgCheck(false)
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setConverting(true); setConverted(null)
+    try {
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload = () => res(r.result.split(',')[1])
+        r.onerror = rej
+        r.readAsDataURL(file)
+      })
+      const response = await fetch('/api/svg-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: base64, mimeType: file.type }),
+      })
+      const data = await response.json()
+      if (data.error) throw new Error(data.error)
+      setConverted(data)
+    } catch (err) { alert(err.message) }
+    setConverting(false)
+    e.target.value = ''
+  }
+
+  // DigiCert VMC checklist — in order of application requirement
+  const checks = [
+    {
+      id: 'dmarc_reject',
+      label: 'DMARC p=reject enforced',
+      pass: hasReject,
+      required: true,
+      desc: hasReject ? 'Policy is set to p=reject ✓' : `Current policy is p=${policy || 'none'} — VMC issuers require p=reject`,
+      fix: !hasReject ? { label: 'Go to DMARC tab', action: null, note: 'Change your DMARC policy to p=reject. Your Enforcement Journey shows when it's safe.' } : null,
+    },
+    {
+      id: 'spf',
+      label: 'Valid SPF record',
+      pass: hasSPF,
+      required: true,
+      desc: hasSPF ? 'SPF record is valid ✓' : 'No valid SPF record found',
+      fix: !hasSPF ? { label: 'Go to SPF tab', note: 'Add a valid v=spf1 TXT record. VMC validation checks SPF as part of domain validation.' } : null,
+    },
+    {
+      id: 'dkim',
+      label: 'DKIM signing active',
+      pass: hasDKIM,
+      required: true,
+      desc: hasDKIM ? `${dkim.length} DKIM selector(s) found ✓` : 'No DKIM selectors found across 20 common selectors',
+      fix: !hasDKIM ? { label: 'Set up DKIM', note: 'Contact your email provider (Google Workspace, Microsoft 365 etc) to enable DKIM signing.' } : null,
+    },
+    {
+      id: 'bimi_record',
+      label: 'BIMI DNS record exists',
+      pass: hasBIMI,
+      required: true,
+      desc: hasBIMI ? `default._bimi.${domainName} found ✓` : `No BIMI record at default._bimi.${domainName}`,
+      fix: !hasBIMI ? {
+        label: 'Copy record',
+        copy: `default._bimi.${domainName}  IN TXT  "v=BIMI1; l=https://${domainName}/bimi-logo.svg;"`,
+        note: 'Add this TXT record to your DNS. Replace the logo URL with your actual hosted SVG path.',
+      } : null,
+    },
+    {
+      id: 'https',
+      label: 'Logo hosted on HTTPS',
+      pass: hasBIMI && isHTTPS,
+      required: true,
+      desc: !hasBIMI ? 'Requires BIMI record first' : isHTTPS ? `Logo URL uses HTTPS ✓` : 'Logo URL must use HTTPS — HTTP is not allowed for VMC',
+      fix: hasBIMI && !isHTTPS ? { note: 'Update your BIMI record logo URL to use https:// — self-signed certificates are not accepted.' } : null,
+    },
+    {
+      id: 'svg_valid',
+      label: 'SVG is VMC-compliant (Tiny 1.2 P/S)',
+      pass: svgValid === true,
+      required: true,
+      desc: svgChecking ? 'Checking SVG…' : svgValid === null ? (logoUrl ? 'Will check automatically' : 'Requires BIMI logo URL') : svgValid ? 'SVG passes VMC compliance check ✓' : `SVG issue: ${svgError || 'Failed validation'}`,
+      fix: svgValid === false ? { label: 'Convert logo', note: 'Your logo must be SVG Tiny 1.2 Profile S — no raster images, no scripts, square viewBox. Upload your logo below to auto-convert.' } : null,
+    },
+    {
+      id: 'square',
+      label: 'Square viewBox (1:1 ratio)',
+      pass: svgValid === true,
+      required: true,
+      desc: 'SVG must have equal width and height — VMC standard rejects non-square logos',
+      fix: svgValid === false ? { note: 'Ensure your SVG has a square viewBox e.g. viewBox="0 0 100 100". Upload below to auto-fix.' } : null,
+    },
+    {
+      id: 'size',
+      label: 'File size under 32KB',
+      pass: svgValid === true,
+      required: false,
+      desc: 'VMC standard recommends SVG under 32KB for broad client support',
+      fix: null,
+    },
+    {
+      id: 'trademark',
+      label: 'Trademark registered',
+      pass: false,
+      required: true,
+      desc: 'VMC issuers require proof of trademark registration for the logo — this must be done externally',
+      fix: { label: 'Learn more', href: 'https://www.digicert.com/tls-ssl/verified-mark-certificates', note: 'Apply for trademark via IP India or USPTO. Required by all VMC issuers including DigiCert and Entrust.' },
+    },
+    {
+      id: 'vmc',
+      label: 'VMC certificate in BIMI record',
+      pass: hasVMC,
+      required: false,
+      desc: hasVMC ? 'VMC authority= field found in BIMI record ✓' : 'Optional but required for Gmail blue checkmark — add authority= with your VMC URL',
+      fix: !hasVMC ? {
+        copy: `default._bimi.${domainName}  IN TXT  "v=BIMI1; l=https://${domainName}/bimi-logo.svg; a=https://${domainName}/bimi.pem;"`,
+        note: 'After receiving VMC from DigiCert, host the .pem file and add authority= to your BIMI record.',
+      } : null,
+    },
+  ]
+
+  const required    = checks.filter(c => c.required)
+  const passCount   = required.filter(c => c.pass).length
+  const allPass     = passCount === required.length
+  const pct         = Math.round((passCount / required.length) * 100)
+  const certReady   = allPass && hasVMC
+
+  const C = { pass: '#16a34a', fail: '#dc2626', warn: '#d97706' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+
+      {/* Header score card */}
+      <div className="card" style={{ background: certReady ? 'linear-gradient(135deg,#f0fdf4,#dcfce7)' : 'var(--neutral-0)', border: certReady ? '1.5px solid #86efac' : undefined }}>
+        <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <div style={{ position: 'relative', width: 80, height: 80, flexShrink: 0 }}>
+            <svg width={80} height={80} style={{ transform: 'rotate(-90deg)' }}>
+              <circle cx={40} cy={40} r={32} fill="none" stroke="var(--neutral-100)" strokeWidth={8} />
+              <circle cx={40} cy={40} r={32} fill="none" stroke={allPass ? C.pass : pct > 50 ? C.warn : C.fail} strokeWidth={8}
+                strokeDasharray={`${(pct/100)*201} 201`} strokeLinecap="round"
+                style={{ transition: 'stroke-dasharray 1s ease', filter: `drop-shadow(0 0 4px ${allPass ? C.pass : C.warn}66)` }} />
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 18, fontWeight: 900, color: allPass ? C.pass : pct > 50 ? C.warn : C.fail, lineHeight: 1 }}>{pct}%</span>
+            </div>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--neutral-900)', marginBottom: 4 }}>
+              {certReady ? '🏆 VMC Certificate Ready' : allPass ? '✅ Ready — apply for VMC' : `${passCount}/${required.length} requirements met`}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--neutral-500)', marginBottom: 10 }}>
+              {certReady ? 'Your domain meets all VMC requirements. You're ready to apply for a Verified Mark Certificate.' : allPass ? 'All technical checks pass. Apply for a VMC from any accredited issuer (DigiCert, Entrust).' : 'Complete the checklist below to qualify for a Verified Mark Certificate.'}
+            </div>
+            {allPass && (
+              <a href="https://www.digicert.com/tls-ssl/verified-mark-certificates" target="_blank" rel="noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#1a6bff', color: '#fff', borderRadius: 7, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+                Apply for VMC Certificate →
+              </a>
+            )}
+          </div>
+          {bimi?.logo_url && (
+            <img src={bimi.logo_url} alt="BIMI Logo" style={{ width: 64, height: 64, borderRadius: 10, border: '1px solid var(--neutral-150)', objectFit: 'contain', padding: 6 }} onError={e => e.target.style.display='none'} />
+          )}
+        </div>
+      </div>
+
+      {/* Checklist */}
+      <div className="card">
+        <div className="card-header"><h4 style={{ margin: 0 }}>VMC Readiness Checklist</h4><span style={{ fontSize: 11, color: 'var(--neutral-400)' }}>{passCount}/{required.length} required checks passing</span></div>
+        <div className="card-body" style={{ padding: '0.75rem 1.25rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {checks.map((c, i) => (
+            <div key={c.id} style={{ borderRadius: 9, overflow: 'hidden', border: `1px solid ${c.pass ? '#bbf7d0' : c.required ? '#fecaca' : '#e2e8f0'}`, background: c.pass ? '#f0fdf4' : c.required ? '#fff5f5' : 'var(--neutral-50)' }}>
+              <div style={{ display: 'flex', gap: 10, padding: '10px 14px', alignItems: 'flex-start' }}>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: c.pass ? '#dcfce7' : c.required ? '#fee2e2' : '#f1f5f9' }}>
+                  {c.pass ? <CheckCircle size={13} color={C.pass} /> : c.required ? <XCircle size={13} color={C.fail} /> : <AlertTriangle size={13} color={C.warn} />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-800)' }}>{c.label}</span>
+                    {c.required && !c.pass && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: '#fee2e2', color: '#dc2626', textTransform: 'uppercase' }}>Required</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--neutral-500)', lineHeight: 1.5 }}>{c.desc}</div>
+                  {!c.pass && c.fix && (
+                    <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.7)', borderRadius: 6, fontSize: 12, color: 'var(--neutral-600)', lineHeight: 1.5 }}>
+                      💡 {c.fix.note}
+                      {c.fix.copy && (
+                        <div style={{ marginTop: 6, background: '#0e1624', borderRadius: 6, padding: '7px 10px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                          <code style={{ fontSize: 10, color: '#93c5fd', flex: 1, wordBreak: 'break-all', fontFamily: 'monospace', lineHeight: 1.6 }}>{c.fix.copy}</code>
+                          <button onClick={() => navigator.clipboard.writeText(c.fix.copy)} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4, padding: '2px 7px', color: '#60a5fa', fontSize: 10, cursor: 'pointer', flexShrink: 0 }}>Copy</button>
+                        </div>
+                      )}
+                      {c.fix.href && <a href={c.fix.href} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 4, fontSize: 11, color: '#1a6bff', fontWeight: 600 }}>Learn more →</a>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Logo converter */}
+      <div className="card">
+        <div className="card-header"><h4 style={{ margin: 0 }}>Logo → VMC-Compatible SVG</h4></div>
+        <div className="card-body">
+          <div style={{ fontSize: 13, color: 'var(--neutral-600)', marginBottom: 12, lineHeight: 1.6 }}>
+            Upload your logo (PNG, JPG or SVG) and we'll convert it to SVG Tiny 1.2 Profile S — the exact format required by VMC issuers. Square, clean, no raster layers.
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 18px', background: converting ? 'var(--neutral-200)' : '#1a6bff', color: '#fff', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: converting ? 'not-allowed' : 'pointer' }}>
+            {converting ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> Converting…</> : <><Zap size={14} /> Upload & Convert Logo</>}
+            <input type="file" accept=".png,.jpg,.jpeg,.svg" onChange={handleUpload} style={{ display: 'none' }} disabled={converting} />
+          </label>
+
+          {converted && (
+            <div style={{ marginTop: 14, padding: '12px 14px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 9 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✓ Converted successfully — ready for BIMI</div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, color: 'var(--neutral-500)', marginBottom: 4 }}>Next steps:</div>
+                  <ol style={{ fontSize: 12, color: 'var(--neutral-600)', lineHeight: 1.8, paddingLeft: 16 }}>
+                    <li>Download the SVG file below</li>
+                    <li>Host it at <code style={{ fontFamily: 'monospace', fontSize: 11 }}>https://{domainName}/bimi-logo.svg</code></li>
+                    <li>Update your BIMI DNS record with this URL</li>
+                    <li>Apply for VMC with this SVG file</li>
+                  </ol>
+                </div>
+                <a href={URL.createObjectURL(new Blob([converted.svg], {type:'image/svg+xml'}))} download={`${domainName}-bimi.svg`}
+                  style={{ flexShrink: 0, padding: '7px 14px', background: '#16a34a', color: '#fff', borderRadius: 7, fontSize: 12, fontWeight: 700, textDecoration: 'none' }}>
+                  Download SVG
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function DomainDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
