@@ -35,6 +35,7 @@ const navSections = [
       { to: '/bimi',          icon: <Globe size={16} />,     label: 'BIMI Checker' },
       { to: '/svg-converter', icon: <FileImage size={16} />, label: 'SVG VMC Converter' },
       { to: '/bimi-preview',  icon: <Mail size={16} />,      label: 'Email Preview' },
+      { to: '/vmc-advisor',   icon: <Shield size={16} />,    label: 'VMC Advisor' },
     ],
   },
   {
