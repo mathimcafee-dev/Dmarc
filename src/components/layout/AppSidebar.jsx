@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Shield, Globe, BarChart2, Settings, Users, LogOut,
   ChevronDown, Plus, Building2, Bell, HelpCircle,
-  Layout, Activity, Clock, AlertTriangle, FileImage, Mail
+  Layout, Activity, Clock, AlertTriangle, FileImage, Mail, Search
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrg } from '../../hooks/useOrg'
@@ -14,28 +14,40 @@ const navSections = [
   {
     label: 'Overview',
     items: [
-      { to: '/dashboard', icon: <Layout size={16} />, label: 'Dashboard' },
-      { to: '/domains', icon: <Globe size={16} />, label: 'Domains' },
-      { to: '/activity', icon: <Activity size={16} />, label: 'Activity' },
+      { to: '/dashboard', icon: <Layout size={16} />,    label: 'Dashboard' },
+      { to: '/domains',   icon: <Globe size={16} />,     label: 'Domains' },
+      { to: '/activity',  icon: <Activity size={16} />,  label: 'Activity' },
     ],
   },
   {
-    label: 'Email Security',
+    label: 'DNS Security',
     items: [
-      { to: '/dmarc', icon: <Shield size={16} />, label: 'DMARC' },
-      { to: '/reports', icon: <BarChart2 size={16} />, label: 'DMARC Reports' },
-      { to: '/spf', icon: <Activity size={16} />, label: 'SPF Records' },
-      { to: '/dkim', icon: <Activity size={16} />, label: 'DKIM Records' },
-      { to: '/bimi', icon: <Globe size={16} />, label: 'BIMI' },
+      { to: '/dmarc',    icon: <Shield size={16} />,      label: 'DMARC' },
+      { to: '/spf',      icon: <Activity size={16} />,    label: 'SPF Records' },
+      { to: '/dkim',     icon: <Activity size={16} />,    label: 'DKIM Records' },
+      { to: '/timeline', icon: <Clock size={16} />,       label: 'DNS Timeline' },
+      { to: '/blacklist',icon: <AlertTriangle size={16} />,label: 'Blacklist Check' },
+    ],
+  },
+  {
+    label: 'BIMI & Brand',
+    items: [
+      { to: '/bimi',          icon: <Globe size={16} />,     label: 'BIMI Checker' },
       { to: '/svg-converter', icon: <FileImage size={16} />, label: 'SVG VMC Converter' },
-      { to: '/bimi-preview',  icon: <Mail size={16} />,      label: 'BIMI Email Preview' },
+      { to: '/bimi-preview',  icon: <Mail size={16} />,      label: 'Email Preview' },
+    ],
+  },
+  {
+    label: 'Email Tools',
+    items: [
+      { to: '/email-headers', icon: <Search size={16} />,     label: 'Header Analyser' },
+      { to: '/alerts',        icon: <AlertTriangle size={16} />, label: 'Alerts' },
+      { to: '/reports',       icon: <BarChart2 size={16} />,  label: 'DMARC Reports' },
     ],
   },
   {
     label: 'Management',
     items: [
-      { to: '/timeline', icon: <Clock size={16} />, label: 'DNS Timeline' },
-      { to: '/alerts', icon: <AlertTriangle size={16} />, label: 'Alerts' },
       { to: '/members', icon: <Users size={16} />, label: 'Members' },
     ],
   },
