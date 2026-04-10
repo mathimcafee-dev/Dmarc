@@ -282,6 +282,172 @@ function CheckItem({ label, ok, detail }) {
   )
 }
 
+// ── Deliverability Score ──────────────────────────────────────────────────────
+function ScoreGauge({ score }) {
+  const size = 140
+  const r = 52
+  const circ = 2 * Math.PI * r
+  // Half arc — bottom half hidden, show top 180deg
+  const halfCirc = circ / 2
+  const fill = (score / 100) * halfCirc
+  const color = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626'
+  const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Needs work' : 'Poor'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+      <div style={{ position: 'relative', width: size, height: size / 2 + 20, overflow: 'hidden' }}>
+        <svg width={size} height={size} style={{ position: 'absolute', top: 0, left: 0 }}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--neutral-100)" strokeWidth={12}
+            strokeDasharray={`${halfCirc} ${circ}`} strokeDashoffset={halfCirc / 2}
+            transform={`rotate(180 ${size/2} ${size/2})`} strokeLinecap="round" />
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={12}
+            strokeDasharray={`${fill} ${circ}`} strokeDashoffset={halfCirc / 2}
+            transform={`rotate(180 ${size/2} ${size/2})`} strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.16,1,0.3,1)', filter: `drop-shadow(0 0 8px ${color}55)` }} />
+        </svg>
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center' }}>
+          <div style={{ fontSize: 38, fontWeight: 900, color, lineHeight: 1, letterSpacing: '-0.03em' }}>{score}</div>
+          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 2 }}>out of 100</div>
+        </div>
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 700, color, padding: '3px 14px', borderRadius: 99, background: `${color}18` }}>{label}</span>
+    </div>
+  )
+}
+
+function ScoreRow({ label, points, max, desc, pass }) {
+  const pct = Math.round((points / max) * 100)
+  const color = pass ? '#16a34a' : points > 0 ? '#d97706' : '#dc2626'
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--neutral-100)', alignItems: 'flex-start' }}>
+      <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: pass ? 'var(--success-100)' : points > 0 ? 'var(--warning-100)' : 'var(--danger-100)' }}>
+        {pass
+          ? <CheckCircle size={12} color="var(--success-600)" />
+          : points > 0 ? <AlertTriangle size={12} color="var(--warning-600)" />
+          : <XCircle size={12} color="var(--danger-600)" />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-800)' }}>{label}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color }}>{points}/{max}</span>
+        </div>
+        <div style={{ height: 5, background: 'var(--neutral-100)', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width 0.8s ease' }} />
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--neutral-400)', lineHeight: 1.5 }}>{desc}</div>
+      </div>
+    </div>
+  )
+}
+
+function DeliverabilityScore({ domain, spf, dkim, blacklist, onRunBlacklist, blacklistLoading }) {
+  const scores = []
+  let total = 0
+
+  // DMARC — 30 pts
+  const dmarcPolicy = domain?.dmarc_policy
+  const dmarcPts = dmarcPolicy === 'reject' ? 30 : dmarcPolicy === 'quarantine' ? 18 : dmarcPolicy === 'none' ? 5 : 0
+  scores.push({ label: 'DMARC policy', points: dmarcPts, max: 30, pass: dmarcPts === 30,
+    desc: dmarcPolicy === 'reject' ? 'p=reject — full protection against spoofing'
+        : dmarcPolicy === 'quarantine' ? 'p=quarantine — partial protection, upgrade to p=reject for full score'
+        : dmarcPolicy === 'none' ? 'p=none — monitoring only, no protection'
+        : 'No DMARC record found — critical issue' })
+  total += dmarcPts
+
+  // SPF — 20 pts
+  const spfValid = spf?.is_valid
+  const spfExists = !!spf
+  const spfPts = spfValid ? 20 : spfExists ? 10 : 0
+  scores.push({ label: 'SPF record', points: spfPts, max: 20, pass: spfPts === 20,
+    desc: spfValid ? 'Valid SPF record — authorised senders defined'
+        : spfExists ? 'SPF record exists but has issues — check lookup count or syntax'
+        : 'No SPF record — mail servers cannot verify your senders' })
+  total += spfPts
+
+  // DKIM — 20 pts
+  const dkimCount = Array.isArray(dkim) ? dkim.length : 0
+  const dkimPts = dkimCount >= 2 ? 20 : dkimCount === 1 ? 15 : 0
+  scores.push({ label: 'DKIM signing', points: dkimPts, max: 20, pass: dkimPts >= 15,
+    desc: dkimCount >= 2 ? `${dkimCount} DKIM selectors found — excellent`
+        : dkimCount === 1 ? '1 DKIM selector found — consider adding a second for rotation'
+        : 'No DKIM records found — emails cannot be cryptographically signed' })
+  total += dkimPts
+
+  // Blacklist — 20 pts
+  let blacklistPts = 0
+  let blacklistDesc = 'Run a blacklist check to include this in your score'
+  if (blacklist) {
+    blacklistPts = blacklist.listed_count === 0 ? 20 : blacklist.listed_count <= 2 ? 8 : 0
+    blacklistDesc = blacklist.listed_count === 0 ? `Clean across all ${blacklist.checked} blacklists checked`
+      : `Listed on ${blacklist.listed_count} blacklist${blacklist.listed_count > 1 ? 's' : ''} — request delisting immediately`
+  }
+  scores.push({ label: 'Blacklist status', points: blacklistPts, max: 20, pass: blacklist ? blacklist.listed_count === 0 : false,
+    desc: blacklistDesc })
+  total += blacklistPts
+
+  // Health score bonus — 10 pts
+  const healthScore = domain?.health_score || 0
+  const healthPts = healthScore >= 80 ? 10 : healthScore >= 60 ? 6 : healthScore >= 40 ? 3 : 0
+  scores.push({ label: 'DNS health score', points: healthPts, max: 10, pass: healthPts >= 8,
+    desc: `Overall DNS health score: ${healthScore}/100 — ${healthScore >= 80 ? 'all checks passing' : 'some checks need attention'}` })
+  total += healthPts
+
+  const maxTotal = blacklist ? 100 : 80 // penalise if blacklist not run
+  const displayScore = blacklist ? total : Math.round((total / 80) * 100)
+
+  const tips = scores.filter(s => !s.pass).map(s => s.label)
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '1.25rem', alignItems: 'start' }}>
+      {/* Left — gauge + summary */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="card">
+          <div className="card-header"><h4 style={{ margin: 0 }}>Deliverability score</h4></div>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '1.5rem' }}>
+            <ScoreGauge score={displayScore} />
+            {!blacklist && (
+              <div style={{ width: '100%', background: 'var(--warning-50)', border: '1px solid var(--warning-200)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--warning-700)', textAlign: 'center' }}>
+                Run a blacklist check to get your full score
+                <button className="btn btn-secondary btn-sm" style={{ display: 'block', margin: '8px auto 0', fontSize: 12 }}
+                  onClick={onRunBlacklist} disabled={blacklistLoading}>
+                  {blacklistLoading ? 'Checking…' : 'Run blacklist check'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {tips.length > 0 && (
+          <div className="card" style={{ border: '1px solid var(--brand-150)', background: 'var(--brand-50)' }}>
+            <div className="card-body">
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-700)', marginBottom: 8 }}>To improve your score:</div>
+              {tips.map((t, i) => (
+                <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, color: 'var(--brand-700)', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700 }}>→</span> Fix {t}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right — breakdown */}
+      <div className="card">
+        <div className="card-header"><h4 style={{ margin: 0 }}>Score breakdown</h4></div>
+        <div className="card-body" style={{ padding: '0 1.5rem 1rem' }}>
+          {scores.map((s, i) => (
+            <ScoreRow key={i} {...s} />
+          ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, marginTop: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-600)' }}>Total</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--neutral-800)' }}>{displayScore} / 100</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function DomainDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -737,172 +903,10 @@ export function DomainDetailPage() {
           )}
         </div>
       )}
-    </div>
-  )
-}
 
-// ── Deliverability Score ──────────────────────────────────────────────────────
-function ScoreGauge({ score }) {
-  const size = 140
-  const r = 52
-  const circ = 2 * Math.PI * r
-  // Half arc — bottom half hidden, show top 180deg
-  const halfCirc = circ / 2
-  const fill = (score / 100) * halfCirc
-  const color = score >= 80 ? '#16a34a' : score >= 60 ? '#d97706' : '#dc2626'
-  const label = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Needs work' : 'Poor'
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-      <div style={{ position: 'relative', width: size, height: size / 2 + 20, overflow: 'hidden' }}>
-        <svg width={size} height={size} style={{ position: 'absolute', top: 0, left: 0 }}>
-          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--neutral-100)" strokeWidth={12}
-            strokeDasharray={`${halfCirc} ${circ}`} strokeDashoffset={halfCirc / 2}
-            transform={`rotate(180 ${size/2} ${size/2})`} strokeLinecap="round" />
-          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={12}
-            strokeDasharray={`${fill} ${circ}`} strokeDashoffset={halfCirc / 2}
-            transform={`rotate(180 ${size/2} ${size/2})`} strokeLinecap="round"
-            style={{ transition: 'stroke-dasharray 1s cubic-bezier(0.16,1,0.3,1)', filter: `drop-shadow(0 0 8px ${color}55)` }} />
-        </svg>
-        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, textAlign: 'center' }}>
-          <div style={{ fontSize: 38, fontWeight: 900, color, lineHeight: 1, letterSpacing: '-0.03em' }}>{score}</div>
-          <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 2 }}>out of 100</div>
-        </div>
-      </div>
-      <span style={{ fontSize: 13, fontWeight: 700, color, padding: '3px 14px', borderRadius: 99, background: `${color}18` }}>{label}</span>
-    </div>
-  )
-}
-
-function ScoreRow({ label, points, max, desc, pass }) {
-  const pct = Math.round((points / max) * 100)
-  const color = pass ? '#16a34a' : points > 0 ? '#d97706' : '#dc2626'
-  return (
-    <div style={{ display: 'flex', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--neutral-100)', alignItems: 'flex-start' }}>
-      <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: pass ? 'var(--success-100)' : points > 0 ? 'var(--warning-100)' : 'var(--danger-100)' }}>
-        {pass
-          ? <CheckCircle size={12} color="var(--success-600)" />
-          : points > 0 ? <AlertTriangle size={12} color="var(--warning-600)" />
-          : <XCircle size={12} color="var(--danger-600)" />}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-800)' }}>{label}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color }}>{points}/{max}</span>
-        </div>
-        <div style={{ height: 5, background: 'var(--neutral-100)', borderRadius: 99, overflow: 'hidden', marginBottom: 4 }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 99, transition: 'width 0.8s ease' }} />
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--neutral-400)', lineHeight: 1.5 }}>{desc}</div>
-      </div>
-    </div>
-  )
-}
-
-function DeliverabilityScore({ domain, spf, dkim, blacklist, onRunBlacklist, blacklistLoading }) {
-  const scores = []
-  let total = 0
-
-  // DMARC — 30 pts
-  const dmarcPolicy = domain?.dmarc_policy
-  const dmarcPts = dmarcPolicy === 'reject' ? 30 : dmarcPolicy === 'quarantine' ? 18 : dmarcPolicy === 'none' ? 5 : 0
-  scores.push({ label: 'DMARC policy', points: dmarcPts, max: 30, pass: dmarcPts === 30,
-    desc: dmarcPolicy === 'reject' ? 'p=reject — full protection against spoofing'
-        : dmarcPolicy === 'quarantine' ? 'p=quarantine — partial protection, upgrade to p=reject for full score'
-        : dmarcPolicy === 'none' ? 'p=none — monitoring only, no protection'
-        : 'No DMARC record found — critical issue' })
-  total += dmarcPts
-
-  // SPF — 20 pts
-  const spfValid = spf?.is_valid
-  const spfExists = !!spf
-  const spfPts = spfValid ? 20 : spfExists ? 10 : 0
-  scores.push({ label: 'SPF record', points: spfPts, max: 20, pass: spfPts === 20,
-    desc: spfValid ? 'Valid SPF record — authorised senders defined'
-        : spfExists ? 'SPF record exists but has issues — check lookup count or syntax'
-        : 'No SPF record — mail servers cannot verify your senders' })
-  total += spfPts
-
-  // DKIM — 20 pts
-  const dkimCount = Array.isArray(dkim) ? dkim.length : 0
-  const dkimPts = dkimCount >= 2 ? 20 : dkimCount === 1 ? 15 : 0
-  scores.push({ label: 'DKIM signing', points: dkimPts, max: 20, pass: dkimPts >= 15,
-    desc: dkimCount >= 2 ? `${dkimCount} DKIM selectors found — excellent`
-        : dkimCount === 1 ? '1 DKIM selector found — consider adding a second for rotation'
-        : 'No DKIM records found — emails cannot be cryptographically signed' })
-  total += dkimPts
-
-  // Blacklist — 20 pts
-  let blacklistPts = 0
-  let blacklistDesc = 'Run a blacklist check to include this in your score'
-  if (blacklist) {
-    blacklistPts = blacklist.listed_count === 0 ? 20 : blacklist.listed_count <= 2 ? 8 : 0
-    blacklistDesc = blacklist.listed_count === 0 ? `Clean across all ${blacklist.checked} blacklists checked`
-      : `Listed on ${blacklist.listed_count} blacklist${blacklist.listed_count > 1 ? 's' : ''} — request delisting immediately`
-  }
-  scores.push({ label: 'Blacklist status', points: blacklistPts, max: 20, pass: blacklist ? blacklist.listed_count === 0 : false,
-    desc: blacklistDesc })
-  total += blacklistPts
-
-  // Health score bonus — 10 pts
-  const healthScore = domain?.health_score || 0
-  const healthPts = healthScore >= 80 ? 10 : healthScore >= 60 ? 6 : healthScore >= 40 ? 3 : 0
-  scores.push({ label: 'DNS health score', points: healthPts, max: 10, pass: healthPts >= 8,
-    desc: `Overall DNS health score: ${healthScore}/100 — ${healthScore >= 80 ? 'all checks passing' : 'some checks need attention'}` })
-  total += healthPts
-
-  const maxTotal = blacklist ? 100 : 80 // penalise if blacklist not run
-  const displayScore = blacklist ? total : Math.round((total / 80) * 100)
-
-  const tips = scores.filter(s => !s.pass).map(s => s.label)
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '1.25rem', alignItems: 'start' }}>
-      {/* Left — gauge + summary */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div className="card">
-          <div className="card-header"><h4 style={{ margin: 0 }}>Deliverability score</h4></div>
-          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', padding: '1.5rem' }}>
-            <ScoreGauge score={displayScore} />
-            {!blacklist && (
-              <div style={{ width: '100%', background: 'var(--warning-50)', border: '1px solid var(--warning-200)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--warning-700)', textAlign: 'center' }}>
-                Run a blacklist check to get your full score
-                <button className="btn btn-secondary btn-sm" style={{ display: 'block', margin: '8px auto 0', fontSize: 12 }}
-                  onClick={onRunBlacklist} disabled={blacklistLoading}>
-                  {blacklistLoading ? 'Checking…' : 'Run blacklist check'}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {tips.length > 0 && (
-          <div className="card" style={{ border: '1px solid var(--brand-150)', background: 'var(--brand-50)' }}>
-            <div className="card-body">
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-700)', marginBottom: 8 }}>To improve your score:</div>
-              {tips.map((t, i) => (
-                <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, color: 'var(--brand-700)', marginBottom: 4 }}>
-                  <span style={{ fontWeight: 700 }}>→</span> Fix {t}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Right — breakdown */}
-      <div className="card">
-        <div className="card-header"><h4 style={{ margin: 0 }}>Score breakdown</h4></div>
-        <div className="card-body" style={{ padding: '0 1.5rem 1rem' }}>
-          {scores.map((s, i) => (
-            <ScoreRow key={i} {...s} />
-          ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 12, marginTop: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-600)' }}>Total</span>
-            <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--neutral-800)' }}>{displayScore} / 100</span>
-          </div>
-        </div>
-      </div>
+      {activeTab === 'deliverability' && (
+        <DeliverabilityScore domain={domain} spf={spf} dkim={dkim} blacklist={blacklist} onRunBlacklist={fetchBlacklist} blacklistLoading={blacklistLoading} />
+      )}
     </div>
   )
 }
