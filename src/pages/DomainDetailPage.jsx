@@ -468,6 +468,8 @@ export function DomainDetailPage() {
     const d = domains.find(d => d.id === id)
     if (d) setDomain(d)
     fetchRecords()
+    const domainName = domains.find(d => d.id === id)?.domain
+    if (domainName) fetchBlacklist(domainName)
   }, [id, domains])
 
   async function fetchRecords() {
@@ -494,13 +496,15 @@ export function DomainDetailPage() {
     fetchRecords()
     const d = domains.find(d => d.id === id)
     if (d) setDomain({ ...d, health_score: result.healthScore, last_checked_at: new Date().toISOString() })
+    fetchBlacklist()
   }
 
-  async function fetchBlacklist() {
-    if (!domain?.domain) return
+  async function fetchBlacklist(domainName) {
+    const target = domainName || domain?.domain
+    if (!target) return
     setBlacklistLoading(true)
     try {
-      const res = await fetch(`/api/blacklist-check?domain=${domain.domain}`)
+      const res = await fetch(`/api/blacklist-check?domain=${target}`)
       const data = await res.json()
       setBlacklist(data)
     } catch { setBlacklist(null) }
