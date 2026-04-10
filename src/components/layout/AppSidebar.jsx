@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Shield, Globe, BarChart2, Settings, Users, LogOut,
   ChevronDown, Plus, Building2, Bell, HelpCircle,
-  Layout, Activity, Clock, AlertTriangle, FileImage
+  Layout, Activity, Clock, AlertTriangle, FileImage, Mail
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrg } from '../../hooks/useOrg'
@@ -28,6 +28,7 @@ const navSections = [
       { to: '/dkim', icon: <Activity size={16} />, label: 'DKIM Records' },
       { to: '/bimi', icon: <Globe size={16} />, label: 'BIMI' },
       { to: '/svg-converter', icon: <FileImage size={16} />, label: 'SVG VMC Converter' },
+      { to: '/bimi-preview',  icon: <Mail size={16} />,      label: 'BIMI Email Preview' },
     ],
   },
   {
