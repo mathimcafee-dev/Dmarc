@@ -151,7 +151,7 @@ function SuggestionsPanel({ domain, dmarc, spf, dkim, bimi }) {
       description: 'Your domain has no DMARC record — anyone can spoof emails from your domain.',
       recordType: 'TXT',
       recordName: `_dmarc.${domainName}`,
-      recordValue: `v=DMARC1; p=none; rua=mailto:mathivanan@easysecurity.in; ruf=mailto:mathivanan@easysecurity.in; fo=1`,
+      recordValue: `v=DMARC1; p=none; rua=mailto:reports@pwonka.resend.app; ruf=mailto:reports@pwonka.resend.app; fo=1`,
       why: 'Without DMARC, attackers can send emails pretending to be from your domain. This harms your brand reputation and can trick your customers. Start with p=none to monitor, then move to p=reject once you verify all your email senders are covered.',
     })
   }
@@ -164,7 +164,7 @@ function SuggestionsPanel({ domain, dmarc, spf, dkim, bimi }) {
       description: 'Your DMARC is in monitor mode only — spoofed emails are still being delivered.',
       recordType: 'TXT',
       recordName: `_dmarc.${domainName}`,
-      recordValue: `v=DMARC1; p=quarantine; rua=mailto:mathivanan@easysecurity.in; pct=100; fo=1`,
+      recordValue: `v=DMARC1; p=quarantine; rua=mailto:reports@pwonka.resend.app; pct=100; fo=1`,
       why: 'p=none only watches — it does not protect. Upgrading to p=quarantine sends spoofed emails to spam instead of the inbox. Once confident, move to p=reject to block them entirely.',
     })
   }
@@ -177,7 +177,7 @@ function SuggestionsPanel({ domain, dmarc, spf, dkim, bimi }) {
       description: 'Move to full enforcement — block spoofed emails completely.',
       recordType: 'TXT',
       recordName: `_dmarc.${domainName}`,
-      recordValue: `v=DMARC1; p=reject; rua=mailto:mathivanan@easysecurity.in; pct=100; fo=1`,
+      recordValue: `v=DMARC1; p=reject; rua=mailto:reports@pwonka.resend.app; pct=100; fo=1`,
       why: 'p=reject is the gold standard — spoofed emails are rejected before they reach any inbox. Only do this once you have confirmed SPF and DKIM are working for all your email senders.',
     })
   }
@@ -190,7 +190,7 @@ function SuggestionsPanel({ domain, dmarc, spf, dkim, bimi }) {
       description: 'You have no aggregate reporting configured — you cannot see who is sending email as your domain.',
       recordType: 'TXT',
       recordName: `_dmarc.${domainName}`,
-      recordValue: `v=DMARC1; p=${dmarc.policy || 'none'}; rua=mailto:mathivanan@easysecurity.in; fo=1`,
+      recordValue: `v=DMARC1; p=${dmarc.policy || 'none'}; rua=mailto:reports@pwonka.resend.app; fo=1`,
       why: 'DMARC reports tell you which mail servers are sending email using your domain — both legitimate and malicious. Without RUA reports you are flying blind.',
     })
   }
