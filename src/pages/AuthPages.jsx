@@ -300,7 +300,7 @@ function Hero({ onStart, onTools }) {
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 720, margin: '0 auto' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(26,107,255,0.12)', border: '1px solid rgba(26,107,255,0.25)', borderRadius: 99, padding: '5px 16px', marginBottom: 28 }}>
           <div style={{ width: 7, height: 7, background: C.blueLight, borderRadius: '50%' }} />
-          <span style={{ fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>Free for Indian businesses — no credit card needed</span>
+          <span style={{ fontSize: 13, color: '#93c5fd', fontWeight: 600 }}>Complete DNS & email security management platform</span>
         </div>
         <h1 style={{ fontSize: 52, fontWeight: 900, color: C.white, letterSpacing: '-0.04em', lineHeight: 1.05, marginBottom: 22 }}>
           Stop email spoofing.<br />
@@ -318,7 +318,7 @@ function Hero({ onStart, onTools }) {
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 48, flexWrap: 'wrap' }}>
-          {[['4 tools', 'DMARC · SPF · DKIM · MX'], ['100% free', 'No credit card ever'], ['∞ domains', 'Monitor unlimited']].map(([num, label]) => (
+          {[['4 tools', 'DMARC · SPF · DKIM · MX'], ['10+ checks', 'Per domain scan'], ['∞ domains', 'Monitor unlimited']].map(([num, label]) => (
             <div key={num} style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 26, fontWeight: 900, color: C.white, letterSpacing: '-0.04em' }}><span style={{ color: C.blue }}>{num.split(' ')[0]}</span> {num.split(' ')[1] || ''}</div>
               <div style={{ fontSize: 12, color: C.slate600, marginTop: 3 }}>{label}</div>
@@ -529,7 +529,7 @@ function Footer() {
   return (
     <div style={{ background: '#030712', padding: '24px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
       <span style={{ fontSize: 14, fontWeight: 800, color: C.white }}>DNS<span style={{ color: C.blueLight }}>Monitor</span> <span style={{ color: C.slate700, fontWeight: 400, fontSize: 12 }}>by EasySecurity</span></span>
-      <span style={{ fontSize: 12, color: C.slate700 }}>Free DMARC & DNS monitoring for Indian businesses</span>
+      <span style={{ fontSize: 12, color: C.slate600 }}>Developed by Mathivanan K with ♥ towards DNS</span>
       <a href="https://easysecurity.in" style={{ fontSize: 12, color: C.slate600, textDecoration: 'none' }}>easysecurity.in →</a>
     </div>
   )
