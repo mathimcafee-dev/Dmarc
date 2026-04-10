@@ -78,20 +78,26 @@ export function OrgProvider({ children }) {
 
     // Send invitation email via API
     try {
-      await fetch('/api/send-invite', {
+      const emailRes = await fetch('/api/send-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email,
           orgName: currentOrg.name,
           role,
-          invitedBy: profile?.full_name || user?.email || 'A team member',
+          invitedBy: user?.email || 'A team member',
           inviteId: data?.id,
         }),
       })
+      const emailData = await emailRes.json()
+      if (!emailRes.ok) {
+        console.error('Invite email error:', emailData)
+        // Return success for the invite but warn about email
+        return { data, error: null, emailError: emailData.error }
+      }
     } catch (emailErr) {
-      console.warn('Invite email failed to send:', emailErr)
-      // Don't block — invitation is saved, email is best-effort
+      console.warn('Invite email failed:', emailErr)
+      return { data, error: null, emailError: 'Email delivery failed' }
     }
 
     return { data, error: null }
