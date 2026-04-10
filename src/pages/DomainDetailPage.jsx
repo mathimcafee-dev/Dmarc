@@ -340,12 +340,12 @@ function ScoreRow({ label, points, max, desc, pass }) {
   )
 }
 
-function DeliverabilityScore({ domain, spf, dkim, blacklist, onRunBlacklist, blacklistLoading }) {
+function DeliverabilityScore({ domain, dmarc, spf, dkim, blacklist, onRunBlacklist, blacklistLoading }) {
   const scores = []
   let total = 0
 
-  // DMARC — 30 pts
-  const dmarcPolicy = domain?.dmarc_policy
+  // DMARC — 30 pts — use fetched dmarc record, fall back to domain cache
+  const dmarcPolicy = dmarc?.policy || domain?.dmarc_policy
   const dmarcPts = dmarcPolicy === 'reject' ? 30 : dmarcPolicy === 'quarantine' ? 18 : dmarcPolicy === 'none' ? 5 : 0
   scores.push({ label: 'DMARC policy', points: dmarcPts, max: 30, pass: dmarcPts === 30,
     desc: dmarcPolicy === 'reject' ? 'p=reject — full protection against spoofing'
@@ -905,7 +905,7 @@ export function DomainDetailPage() {
       )}
 
       {activeTab === 'deliverability' && (
-        <DeliverabilityScore domain={domain} spf={spf} dkim={dkim} blacklist={blacklist} onRunBlacklist={fetchBlacklist} blacklistLoading={blacklistLoading} />
+        <DeliverabilityScore domain={domain} dmarc={dmarc} spf={spf} dkim={dkim} blacklist={blacklist} onRunBlacklist={fetchBlacklist} blacklistLoading={blacklistLoading} />
       )}
     </div>
   )
