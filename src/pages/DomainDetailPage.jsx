@@ -774,7 +774,7 @@ function BIMIValidator({ domain, dmarc, spf, dkim, bimi }) {
               {certReady ? '🏆 VMC Certificate Ready' : allPass ? '✅ Ready — apply for VMC' : `${passCount}/${required.length} requirements met`}
             </div>
             <div style={{ fontSize: 13, color: 'var(--neutral-500)', marginBottom: 10 }}>
-              {certReady ? 'Your domain meets all VMC requirements. You're ready to apply for a Verified Mark Certificate.' : allPass ? 'All technical checks pass. Apply for a VMC from any accredited issuer (DigiCert, Entrust).' : 'Complete the checklist below to qualify for a Verified Mark Certificate.'}
+              {certReady ? 'Your domain meets all VMC requirements. You are ready to apply for a Verified Mark Certificate.' : allPass ? 'All technical checks pass. Apply for a VMC from any accredited issuer (DigiCert, Entrust).' : 'Complete the checklist below to qualify for a Verified Mark Certificate.'}
             </div>
             {allPass && (
               <a href="https://www.digicert.com/tls-ssl/verified-mark-certificates" target="_blank" rel="noreferrer"
