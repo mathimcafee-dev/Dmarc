@@ -1,70 +1,75 @@
 const potrace = require('potrace')
-const jimp = require('jimp')
-const Jimp = jimp.Jimp
-const JimpMime = jimp.JimpMime
+const sharp = require('sharp')
 
-// ── Colour complexity detection ───────────────────────────────────────────────
+// ── Analyse image colours using sharp ────────────────────────────────────────
 async function analyzeImage(buf) {
-  const img = await Jimp.read(buf)
+  const { data, info } = await sharp(buf)
+    .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
 
-  if (img.width > 512 || img.height > 512) {
-    img.resize({ w: 512, h: 512 })
-  }
-
+  const { width, height, channels } = info
   const colorMap = new Map()
-  const step = 3
-  for (let x = 0; x < img.width; x += step) {
-    for (let y = 0; y < img.height; y += step) {
-      const c = img.getPixelColor(x, y)
-      const a = c & 0xFF
-      if (a < 128) continue
-      const r = Math.round(((c >>> 24) & 0xFF) / 32) * 32
-      const g = Math.round(((c >>> 16) & 0xFF) / 32) * 32
-      const b = Math.round(((c >>> 8)  & 0xFF) / 32) * 32
-      const key = `${r},${g},${b}`
-      colorMap.set(key, (colorMap.get(key) || 0) + 1)
-    }
+  const step = channels * 3 // sample every 3rd pixel
+
+  for (let i = 0; i < data.length; i += step) {
+    const a = channels === 4 ? data[i + 3] : 255
+    if (a < 128) continue
+    const r = Math.round(data[i]     / 32) * 32
+    const g = Math.round(data[i + 1] / 32) * 32
+    const b = Math.round(data[i + 2] / 32) * 32
+    const key = `${r},${g},${b}`
+    colorMap.set(key, (colorMap.get(key) || 0) + 1)
   }
 
-  return { img, colorMap, uniqueColors: colorMap.size }
+  return { data, info, colorMap, uniqueColors: colorMap.size }
+}
+
+// ── Create a colour mask PNG using sharp ─────────────────────────────────────
+async function createColorMask(buf, targetR, targetG, targetB) {
+  const { data, info } = await sharp(buf)
+    .resize(512, 512, { fit: 'inside', withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+
+  const { width, height, channels } = info
+  const maskData = Buffer.alloc(width * height * 3)
+
+  for (let i = 0, j = 0; i < data.length; i += channels, j += 3) {
+    const a = channels === 4 ? data[i + 3] : 255
+    if (a < 128) { maskData[j] = maskData[j+1] = maskData[j+2] = 255; continue }
+    const r = Math.round(data[i]     / 32) * 32
+    const g = Math.round(data[i + 1] / 32) * 32
+    const b = Math.round(data[i + 2] / 32) * 32
+    const match = Math.abs(r - targetR) < 33 && Math.abs(g - targetG) < 33 && Math.abs(b - targetB) < 33
+    maskData[j] = maskData[j+1] = maskData[j+2] = match ? 0 : 255
+  }
+
+  return sharp(maskData, { raw: { width, height, channels: 3 } }).png().toBuffer()
 }
 
 // ── Colour-aware tracing ──────────────────────────────────────────────────────
 async function traceWithColours(buf, maxColours = 8) {
-  const { img, colorMap, uniqueColors } = await analyzeImage(buf)
+  const { colorMap, uniqueColors } = await analyzeImage(buf)
 
   if (uniqueColors > 60) {
     return { complex: true, uniqueColors }
   }
 
+  // Get dominant colours, skip near-white background
   const dominantColors = [...colorMap.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxColours)
     .map(([key]) => {
       const [r, g, b] = key.split(',').map(Number)
-      return {
-        r, g, b,
-        hex: `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`
-      }
+      return { r, g, b, hex: `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}` }
     })
     .filter(c => !(c.r > 210 && c.g > 210 && c.b > 210))
 
   const layers = []
   for (const color of dominantColors) {
-    const mask = img.clone()
-    for (let x = 0; x < mask.width; x++) {
-      for (let y = 0; y < mask.height; y++) {
-        const c = mask.getPixelColor(x, y)
-        const r = Math.round(((c >>> 24) & 0xFF) / 32) * 32
-        const g = Math.round(((c >>> 16) & 0xFF) / 32) * 32
-        const b = Math.round(((c >>> 8)  & 0xFF) / 32) * 32
-        const match = Math.abs(r - color.r) < 33 && Math.abs(g - color.g) < 33 && Math.abs(b - color.b) < 33
-        mask.setPixelColor(match ? 0x000000FF : 0xFFFFFFFF, x, y)
-      }
-    }
-
-    const maskBuf = await mask.getBuffer(JimpMime.png)
     try {
+      const maskBuf = await createColorMask(buf, color.r, color.g, color.b)
       const svg = await new Promise((res, rej) => {
         potrace.trace(maskBuf, {
           color: color.hex,
@@ -82,10 +87,23 @@ async function traceWithColours(buf, maxColours = 8) {
           .trim()
         if (inner) layers.push(inner)
       }
-    } catch { /* skip failed layers */ }
+    } catch { /* skip failed colour layers */ }
   }
 
   return { complex: false, layers, dominantColors }
+}
+
+// ── Single colour trace fallback ──────────────────────────────────────────────
+function traceSingleColor(buffer, color) {
+  return new Promise((resolve, reject) => {
+    potrace.trace(buffer, {
+      color: color || '#000000',
+      background: 'transparent',
+      threshold: 128,
+      turdSize: 2,
+      optTolerance: 0.4,
+    }, (err, svg) => err ? reject(err) : resolve(svg))
+  })
 }
 
 // ── VMC SVG cleanup ───────────────────────────────────────────────────────────
@@ -121,20 +139,7 @@ ${inner.trim()}
 </svg>`
 }
 
-// ── Single colour trace fallback ──────────────────────────────────────────────
-function traceSingleColor(buffer, color) {
-  return new Promise((resolve, reject) => {
-    potrace.trace(buffer, {
-      color: color || '#000000',
-      background: 'transparent',
-      threshold: 128,
-      turdSize: 2,
-      optTolerance: 0.4,
-    }, (err, svg) => err ? reject(err) : resolve(svg))
-  })
-}
-
-// ── Handler ───────────────────────────────────────────────────────────────────
+// ── Main handler ──────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
