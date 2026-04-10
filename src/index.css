@@ -765,3 +765,150 @@ tbody tr:hover td { background: var(--neutral-50); }
 }
 .tab:hover { color: var(--neutral-800); }
 .tab.active { color: var(--brand-500); border-bottom-color: var(--brand-500); }
+
+/* ═══════════════════════════════════════════════════════
+   UI IMPROVEMENTS v2 — April 2026
+   ═══════════════════════════════════════════════════════ */
+
+/* Sidebar — tighter, more refined */
+.sidebar-section-label {
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.25);
+  padding: 0 0.625rem;
+}
+.nav-item {
+  padding: 0.4375rem 0.625rem;
+  font-size: 0.8125rem;
+  border-radius: 6px;
+  margin: 1px 0;
+}
+.nav-item.active {
+  background: rgba(26,107,255,0.18);
+  color: #93c5fd;
+  font-weight: 600;
+}
+.nav-item.active svg { color: #93c5fd; }
+.nav-item:hover:not(.active) { background: rgba(255,255,255,0.05); }
+
+/* Cards — subtle elevation */
+.card {
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  border: none;
+  transition: box-shadow 0.15s ease;
+}
+.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.09), 0 0 0 1px rgba(0,0,0,0.05); }
+.card-header { background: var(--neutral-50); padding: 1rem 1.25rem; }
+.card-header h4 { font-size: 0.9375rem; font-weight: 600; color: var(--neutral-800); }
+
+/* Page header — cleaner */
+.page-header {
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--neutral-100);
+}
+.page-header-left h1 {
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--neutral-900);
+}
+
+/* Stat cards */
+.stat-card {
+  background: var(--neutral-0);
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  padding: 1.125rem;
+  transition: box-shadow 0.15s;
+}
+.stat-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
+.stat-label { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.06em; }
+.stat-value { font-size: 1.875rem; font-weight: 900; letter-spacing: -0.03em; }
+
+/* Domain cards */
+.domain-card {
+  background: var(--neutral-0);
+  border: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04);
+  border-radius: var(--radius-lg);
+  transition: all 0.15s;
+}
+.domain-card:hover {
+  box-shadow: 0 4px 14px rgba(26,107,255,0.12), 0 0 0 1.5px var(--brand-300);
+  transform: translateY(-1px);
+}
+
+/* Tabs — pill style */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--neutral-100);
+  border-radius: 10px;
+  padding: 4px;
+  border: none;
+}
+.tab {
+  padding: 0.4375rem 0.875rem;
+  border-radius: 7px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--neutral-500);
+  border: none;
+  background: none;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+.tab:hover { color: var(--neutral-800); background: rgba(255,255,255,0.6); }
+.tab.active {
+  background: white;
+  color: var(--brand-600);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+/* Buttons — more polished */
+.btn-primary {
+  box-shadow: 0 1px 3px rgba(26,107,255,0.4), inset 0 1px 0 rgba(255,255,255,0.15);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 3px 8px rgba(26,107,255,0.4);
+  transform: translateY(-1px);
+}
+.btn-secondary {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Health ring label */
+.health-score-number { font-size: 1.125rem; font-weight: 900; }
+
+/* Alert banners */
+.alert-banner {
+  border-radius: 9px;
+  font-size: 0.8125rem;
+  border-width: 1px;
+}
+
+/* Enforcement journey */
+.enforce-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+.enforce-node {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 800;
+  border: 2.5px solid;
+  transition: all 0.3s;
+  z-index: 1;
+}
+.enforce-line {
+  position: absolute;
+  top: 17px; left: 50%; right: -50%;
+  height: 3px;
+  border-radius: 99px;
+}
