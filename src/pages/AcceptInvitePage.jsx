@@ -13,28 +13,7 @@ const ROLE_DESC = {
 }
 const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', member: 'Member', viewer: 'Viewer' }
 
-function Input({ icon: Icon, type, value, onChange, placeholder, readOnly, minLength, required, rightIcon, onRightIcon }) {
-  return (
-    <div style={{ position: 'relative' }}>
-      {Icon && <Icon size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#cbd5e1', pointerEvents: 'none' }} />}
-      <input
-        type={type}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        readOnly={readOnly}
-        minLength={minLength}
-        required={required}
-        style={{ width: '100%', height: 42, border: '1.5px solid #e2e8f0', borderRadius: 8, paddingLeft: Icon ? 36 : 14, paddingRight: rightIcon ? 40 : 14, fontSize: 14, color: readOnly ? '#94a3b8' : '#0f172a', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: readOnly ? '#f8fafc' : '#fff' }}
-      />
-      {rightIcon && (
-        <button type="button" onClick={onRightIcon} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 0, display: 'flex' }}>
-          {rightIcon}
-        </button>
-      )}
-    </div>
-  )
-}
+
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function AcceptInvitePage() {
@@ -308,14 +287,19 @@ export function AcceptInvitePage() {
           {tab === 'signup' && (
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Full name</label>
-              <Input type="text" placeholder="Your name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              <input type="text" placeholder="Your name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required
+                style={{ width: '100%', height: 42, border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '0 14px', fontSize: 14, color: '#0f172a', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
             </div>
           )}
 
           {/* Email — locked to invite email */}
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Email address</label>
-            <Input icon={Mail} type="email" value={invite?.email || ''} readOnly />
+            <div style={{ position: 'relative' }}>
+              <Mail size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#cbd5e1', pointerEvents: 'none' }} />
+              <input type="email" value={invite?.email || ''} readOnly
+                style={{ width: '100%', height: 42, border: '1.5px solid #e2e8f0', borderRadius: 8, paddingLeft: 36, paddingRight: 14, fontSize: 14, color: '#94a3b8', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', background: '#f8fafc' }} />
+            </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
               🔒 Locked — you must use this email to accept the invite
             </div>
@@ -323,17 +307,22 @@ export function AcceptInvitePage() {
 
           <div>
             <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 5 }}>Password</label>
-            <Input
-              icon={Lock}
-              type={showPwd ? 'text' : 'password'}
-              placeholder={tab === 'signup' ? 'Create a password (min. 8 chars)' : 'Enter your password'}
-              value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              required
-              minLength={tab === 'signup' ? 8 : undefined}
-              rightIcon={showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-              onRightIcon={() => setShowPwd(p => !p)}
-            />
+            <div style={{ position: 'relative' }}>
+              <Lock size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#cbd5e1', pointerEvents: 'none' }} />
+              <input
+                type={showPwd ? 'text' : 'password'}
+                placeholder={tab === 'signup' ? 'Create a password (min. 8 chars)' : 'Enter your password'}
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                required
+                minLength={tab === 'signup' ? 8 : undefined}
+                style={{ width: '100%', height: 42, border: '1.5px solid #e2e8f0', borderRadius: 8, paddingLeft: 36, paddingRight: 40, fontSize: 14, color: '#0f172a', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+              />
+              <button type="button" onClick={() => setShowPwd(p => !p)}
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: 0, display: 'flex' }}>
+                {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
           </div>
 
           <button type="submit" disabled={authLoading}
