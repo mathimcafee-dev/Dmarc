@@ -5,7 +5,9 @@ import { useOrg } from '../../hooks/useOrg'
 const PAGE_TITLES = {
   '/dashboard': { title: 'Dashboard', desc: 'Overview of your DNS health' },
   '/domains': { title: 'Domains', desc: 'Manage and monitor your domains' },
-  '/tools':    { title: 'Free Tools', desc: 'DMARC, SPF, DKIM & MX lookup — no login required' },
+  '/tools':         { title: 'Free Tools', desc: 'DMARC, SPF, DKIM & MX lookup — no login required' },
+  '/svg-converter': { title: 'SVG VMC Converter',    desc: 'Convert your logo to BIMI/VMC compliant SVG format' },
+  '/bimi-preview':  { title: 'BIMI Email Preview',    desc: 'See how your logo appears across 10 email clients' },
   '/dmarc': { title: 'DMARC', desc: 'DMARC policy management & lookup' },
   '/reports': { title: 'DMARC Reports', desc: 'Aggregate report (RUA) analysis' },
   '/spf': { title: 'SPF Records', desc: 'Sender Policy Framework' },
