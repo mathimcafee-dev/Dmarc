@@ -1,23 +1,109 @@
-// api/svg-convert.js
-// Converts PNG/JPG/SVG to VMC-compliant SVG Tiny 1.2 P/S format
-// Uses potrace for bitmap tracing and custom VMC cleanup
-
 const potrace = require('potrace')
 
+// ── Colour complexity detection ───────────────────────────────────────────────
+async function analyzeImage(buf) {
+  const { Jimp } = require('jimp')
+  const img = await Jimp.read(buf)
+
+  // Resize for analysis
+  if (img.width > 512 || img.height > 512) {
+    img.resize({ w: 512, h: 512 })
+  }
+
+  const colorMap = new Map()
+  const step = 3
+  for (let x = 0; x < img.width; x += step) {
+    for (let y = 0; y < img.height; y += step) {
+      const c = img.getPixelColor(x, y)
+      const a = c & 0xFF
+      if (a < 128) continue
+      const r = Math.round(((c >>> 24) & 0xFF) / 32) * 32
+      const g = Math.round(((c >>> 16) & 0xFF) / 32) * 32
+      const b = Math.round(((c >>> 8)  & 0xFF) / 32) * 32
+      const key = `${r},${g},${b}`
+      colorMap.set(key, (colorMap.get(key) || 0) + 1)
+    }
+  }
+
+  return { img, colorMap, uniqueColors: colorMap.size }
+}
+
+// ── Colour-aware tracing ──────────────────────────────────────────────────────
+async function traceWithColours(buf, maxColours = 8) {
+  const { Jimp, JimpMime } = require('jimp')
+  const { img, colorMap, uniqueColors } = await analyzeImage(buf)
+
+  // Too many colours = photo/complex image
+  if (uniqueColors > 60) {
+    return { complex: true, uniqueColors }
+  }
+
+  // Get dominant colours — skip near-white (background)
+  const dominantColors = [...colorMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, maxColours)
+    .map(([key]) => {
+      const [r, g, b] = key.split(',').map(Number)
+      return {
+        r, g, b,
+        hex: `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`
+      }
+    })
+    .filter(c => !(c.r > 210 && c.g > 210 && c.b > 210))
+
+  // Trace each colour layer separately
+  const layers = []
+  for (const color of dominantColors) {
+    const mask = img.clone()
+    for (let x = 0; x < mask.width; x++) {
+      for (let y = 0; y < mask.height; y++) {
+        const c = mask.getPixelColor(x, y)
+        const r = Math.round(((c >>> 24) & 0xFF) / 32) * 32
+        const g = Math.round(((c >>> 16) & 0xFF) / 32) * 32
+        const b = Math.round(((c >>> 8)  & 0xFF) / 32) * 32
+        const match = Math.abs(r - color.r) < 33 && Math.abs(g - color.g) < 33 && Math.abs(b - color.b) < 33
+        mask.setPixelColor(match ? 0x000000FF : 0xFFFFFFFF, x, y)
+      }
+    }
+
+    const maskBuf = await mask.getBuffer(JimpMime.png)
+    try {
+      const svg = await new Promise((res, rej) => {
+        potrace.trace(maskBuf, {
+          color: color.hex,
+          background: 'transparent',
+          threshold: 128,
+          turdSize: 3,
+          optTolerance: 0.4,
+        }, (err, s) => err ? rej(err) : res(s))
+      })
+
+      const pathMatches = svg.match(/<path[^/]*/g)
+      if (pathMatches && pathMatches.length > 0) {
+        // Extract path data and apply correct fill colour
+        const inner = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i)?.[1] || ''
+        const cleanedPaths = inner
+          .replace(/fill="[^"]*"/g, `fill="${color.hex}"`)
+          .trim()
+        if (cleanedPaths) layers.push(cleanedPaths)
+      }
+    } catch { /* skip failed layers */ }
+  }
+
+  return { complex: false, layers, dominantColors }
+}
+
 // ── VMC SVG cleanup ───────────────────────────────────────────────────────────
-function makeVMCCompliant(svgText, companyName, color) {
-  // Parse viewBox
+function makeVMCCompliant(svgText, companyName) {
   const vbMatch = svgText.match(/viewBox=["']([^"']+)["']/)
   let viewBox = vbMatch ? vbMatch[1] : '0 0 100 100'
   const parts = viewBox.trim().split(/[\s,]+/).map(Number)
 
-  // Make viewBox square
   if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
     const size = Math.max(parts[2], parts[3])
     viewBox = `0 0 ${size} ${size}`
   }
 
-  // Extract all path/shape content — strip outer svg wrapper
   const innerMatch = svgText.match(/<svg[^>]*>([\s\S]*)<\/svg>/i)
   let inner = innerMatch ? innerMatch[1] : ''
 
@@ -33,15 +119,7 @@ function makeVMCCompliant(svgText, companyName, color) {
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/on\w+="[^"]*"/g, '')
 
-  // Apply colour if specified (replace fill on traced paths)
-  if (color && color !== '#000000') {
-    inner = inner.replace(/fill="[^"]*"/g, `fill="${color}"`)
-    if (!inner.includes('fill=')) {
-      inner = inner.replace(/<path /g, `<path fill="${color}" `)
-    }
-  }
-
-  const name = companyName || 'Brand Logo'
+  const name = (companyName || 'Brand Logo').replace(/[<>&"]/g, '')
 
   return `<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="${viewBox}">
 <title>${name}</title>
@@ -49,20 +127,16 @@ ${inner.trim()}
 </svg>`
 }
 
-// ── Trace bitmap to SVG ───────────────────────────────────────────────────────
-function traceBitmap(buffer, color) {
+// ── Single colour trace (fallback) ────────────────────────────────────────────
+function traceSingleColor(buffer, color) {
   return new Promise((resolve, reject) => {
-    const opts = {
+    potrace.trace(buffer, {
       color: color || '#000000',
       background: 'transparent',
       threshold: 128,
       turdSize: 2,
       optTolerance: 0.4,
-    }
-    potrace.trace(buffer, opts, (err, svg) => {
-      if (err) reject(err)
-      else resolve(svg)
-    })
+    }, (err, svg) => err ? reject(err) : resolve(svg))
   })
 }
 
@@ -73,7 +147,7 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
   if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' })
 
   try {
     const { data, mimeType, companyName, color } = req.body
@@ -84,27 +158,58 @@ module.exports = async function handler(req, res) {
 
     const buffer = Buffer.from(data, 'base64')
     let svgText
+    let isComplex = false
+    let colorCount = 0
 
     if (mimeType === 'image/svg+xml') {
-      // SVG — just clean it up
+      // SVG — just clean it up, preserve all colours
       svgText = buffer.toString('utf8')
+
     } else if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-      // Bitmap — trace to SVG
-      svgText = await traceBitmap(buffer, color || '#000000')
+      // Try colour-aware tracing first
+      const result = await traceWithColours(buffer)
+
+      if (result.complex) {
+        isComplex = true
+        colorCount = result.uniqueColors
+        return res.status(422).json({
+          error: 'complex_image',
+          message: `This image has too many colours (${result.uniqueColors} colour variations) to convert automatically. VMC logos must be simple flat-colour vector designs. Please use a flat version of your logo with 2–8 solid colours.`,
+          uniqueColors: result.uniqueColors,
+        })
+      }
+
+      if (result.layers && result.layers.length > 0) {
+        // Build coloured SVG from layers
+        const size = 500
+        svgText = `<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 ${size} ${size}">
+<title>${(companyName || 'Brand Logo').replace(/[<>&"]/g, '')}</title>
+${result.layers.join('\n')}
+</svg>`
+      } else {
+        // Fallback: single colour trace
+        const traced = await traceSingleColor(buffer, color || '#000000')
+        svgText = traced
+      }
+
     } else {
-      return res.status(400).json({ error: `Unsupported format: ${mimeType}. Use PNG, JPG, or SVG.` })
+      return res.status(400).json({ error: `Unsupported format: ${mimeType}` })
     }
 
     // Apply VMC compliance
-    const vmcSvg = makeVMCCompliant(svgText, companyName, color)
+    const vmcSvg = makeVMCCompliant(svgText, companyName)
     const sizeBytes = Buffer.byteLength(vmcSvg, 'utf8')
+    const over32KB = sizeBytes > 32768
 
     return res.status(200).json({
       svg: vmcSvg,
       sizeBytes,
       sizeKB: (sizeBytes / 1024).toFixed(1),
-      compliant: sizeBytes <= 32768,
+      compliant: !over32KB,
+      over32KB,
+      warning: over32KB ? 'File exceeds 32KB limit. Simplify your logo design for VMC compliance.' : null,
     })
+
   } catch (err) {
     console.error('SVG conversion error:', err)
     return res.status(500).json({ error: err.message || 'Conversion failed' })
