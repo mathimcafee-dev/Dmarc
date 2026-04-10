@@ -21,6 +21,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { SVGConverterPage } from './pages/SVGConverterPage'
 import { BIMIPreviewPage } from './pages/BIMIPreviewPage'
 import { VMCAdvisorPage } from './pages/VMCAdvisorPage'
+import { BlacklistPage } from './pages/BlacklistPage'
 import { EmailHeaderPage } from './pages/EmailHeaderPage'
 import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import './index.css'
@@ -103,6 +104,7 @@ export default function App() {
               <Route path="/svg-converter" element={<SVGConverterPage />} />
               <Route path="/bimi-preview"   element={<BIMIPreviewPage />} />
               <Route path="/vmc-advisor"    element={<VMCAdvisorPage />} />
+              <Route path="/blacklist"      element={<BlacklistPage />} />
               <Route path="/email-headers"  element={<EmailHeaderPage />} />
             </Route>
 
