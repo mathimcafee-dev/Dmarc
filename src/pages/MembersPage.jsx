@@ -68,10 +68,14 @@ export function MembersPage() {
   async function handleInvite(e) {
     e.preventDefault()
     setInviting(true)
-    const { error } = await inviteMember(inviteForm.email, inviteForm.role)
+    const { error, emailError } = await inviteMember(inviteForm.email, inviteForm.role)
     setInviting(false)
     if (error) { toast(error.message, 'error'); return }
-    toast(`Invitation sent to ${inviteForm.email}`, 'success')
+    if (emailError) {
+      toast(`Invitation saved but email failed: ${emailError}`, 'error')
+    } else {
+      toast(`Invitation sent to ${inviteForm.email}`, 'success')
+    }
     setInviteOpen(false)
     setInviteForm({ email: '', role: 'member' })
     fetchInvitations()
