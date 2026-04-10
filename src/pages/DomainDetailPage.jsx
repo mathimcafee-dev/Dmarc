@@ -661,7 +661,7 @@ function BIMIValidator({ domain, dmarc, spf, dkim, bimi }) {
       pass: hasReject,
       required: true,
       desc: hasReject ? 'Policy is set to p=reject ✓' : `Current policy is p=${policy || 'none'} — VMC issuers require p=reject`,
-      fix: !hasReject ? { label: 'Go to DMARC tab', action: null, note: 'Change your DMARC policy to p=reject. Your Enforcement Journey shows when it's safe.' } : null,
+      fix: !hasReject ? { label: 'Go to DMARC tab', action: null, note: 'Change your DMARC policy to p=reject. Your Enforcement Journey shows when it is safe.' } : null,
     },
     {
       id: 'spf',
