@@ -283,6 +283,7 @@ export function MembersPage() {
                 onChange={e => setInviteForm(p => ({ ...p, password: e.target.value }))}
                 required
                 minLength={6}
+                autoComplete="new-password"
               />
               <button type="button" onClick={() => setShowInvitePwd(p => !p)}
                 style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--neutral-400)', display: 'flex', padding: 0 }}>
