@@ -18,6 +18,7 @@ import { AlertsPage } from './pages/AlertsPage'
 import { ActivityPage } from './pages/ActivityPage'
 import { MembersPage } from './pages/MembersPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SVGConverterPage } from './pages/SVGConverterPage'
 import './index.css'
 
 function Spinner() {
@@ -94,6 +95,7 @@ export default function App() {
               <Route path="/activity" element={<ActivityPage />} />
               <Route path="/members" element={<MembersPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/svg-converter" element={<SVGConverterPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
