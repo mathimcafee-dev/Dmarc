@@ -213,7 +213,9 @@ export function ReportsPage() {
 
       <div className="alert-banner info" style={{ marginBottom: '1.5rem' }}>
         <Shield size={15} />
-        <span>To receive DMARC reports automatically, add <code style={{ fontFamily: 'var(--font-mono)' }}>rua=mailto:your@email.com</code> to your DMARC record. Mail providers will send XML reports daily. Upload them here or set up a mail-to-webhook bridge.</span>
+        <span>
+          To receive reports automatically, add <code style={{ fontFamily: 'var(--font-mono)', background: 'var(--brand-100)', padding: '1px 5px', borderRadius: 4 }}>rua=mailto:reports@pwonka.resend.app</code> to your DMARC record. Google, Yahoo and all major providers will send XML reports to DNSMonitor daily — they will appear here automatically.
+        </span>
       </div>
 
       {/* Filter */}
