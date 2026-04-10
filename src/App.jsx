@@ -20,6 +20,7 @@ import { MembersPage } from './pages/MembersPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SVGConverterPage } from './pages/SVGConverterPage'
 import { BIMIPreviewPage } from './pages/BIMIPreviewPage'
+import { VMCAdvisorPage } from './pages/VMCAdvisorPage'
 import { EmailHeaderPage } from './pages/EmailHeaderPage'
 import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import './index.css'
@@ -101,6 +102,7 @@ export default function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/svg-converter" element={<SVGConverterPage />} />
               <Route path="/bimi-preview"   element={<BIMIPreviewPage />} />
+              <Route path="/vmc-advisor"    element={<VMCAdvisorPage />} />
               <Route path="/email-headers"  element={<EmailHeaderPage />} />
             </Route>
 
