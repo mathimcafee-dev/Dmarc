@@ -78,7 +78,7 @@ export function OrgProvider({ children }) {
 
     // Send invitation email via API
     try {
-      const emailRes = await fetch('/api/send-invite', {
+      const emailRes = await fetch('/api/invite-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
