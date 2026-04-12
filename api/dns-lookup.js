@@ -2,6 +2,23 @@
 // Public DNS lookup proxy — used by DMARC/SPF/DKIM checker pages
 // Queries Cloudflare DoH so there are zero browser CORS issues
 
+
+// Token verification support (replaces verify-domain.js)
+// Called with ?domain=x&token=y — checks for _dnsmonitor-verification=<token> in TXT records
+async function verifyDomainToken(domain, token, res) {
+  const safeDomain = domain.replace(/[^a-zA-Z0-9.-]/g, '')
+  try {
+    const url = `https://cloudflare-dns.com/dns-query?name=${safeDomain}&type=TXT`
+    const response = await fetch(url, { headers: { Accept: 'application/dns-json' } })
+    const data = await response.json()
+    const answers = data.Answer || []
+    const verified = answers.some(a => (a.data||'').replace(/"/g,'').includes(`_dnsmonitor-verification=${token}`))
+    return res.status(200).json({ verified, domain: safeDomain, answers: answers.map(a => a.data) })
+  } catch (err) {
+    return res.status(500).json({ error: 'DNS lookup failed' })
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN || '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -46,3 +63,7 @@ module.exports = async function handler(req, res) {
     return res.status(500).json({ error: 'DNS lookup failed', details: err.message })
   }
 }
+
+// Also handles verify-domain requests (token=... param)
+// Export is already set above — verify-domain is now handled by dns-lookup
+// Update useDomains.js to call /api/dns-lookup instead of /api/verify-domain
