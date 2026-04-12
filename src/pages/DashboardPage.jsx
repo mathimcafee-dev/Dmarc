@@ -1,72 +1,151 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Globe, Shield, AlertTriangle, CheckCircle, Plus, ArrowRight, TrendingUp, Activity, Clock, Building2, Users, Zap } from 'lucide-react'
+import { Globe, Shield, AlertTriangle, CheckCircle, Plus, ArrowRight, XCircle, ChevronDown, ChevronUp, Users, Zap, Building2, Mail, Server } from 'lucide-react'
 import { useOrg } from '../hooks/useOrg'
 import { useDomains } from '../hooks/useDomains'
 import { supabase } from '../lib/supabase'
 
-function HealthRing({ score, size = 64 }) {
-  const r = (size / 2) - 7
-  const circ = 2 * Math.PI * r
-  const offset = circ - (score / 100) * circ
-  const color = score >= 80 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626'
-  const bg    = score >= 80 ? '#dcfce7' : score >= 50 ? '#fef3c7' : '#fee2e2'
+const SEV = { critical: '#dc2626', high: '#d97706', medium: '#2563eb', low: '#16a34a' }
+const SEV_BG = { critical: '#fee2e2', high: '#fef3c7', medium: '#eff6ff', low: '#dcfce7' }
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3 }
+
+const ESP_SIGNALS = [
+  { name: 'Google Workspace', mx: ['google.com','googlemail.com'], spf: ['_spf.google.com'] },
+  { name: 'Microsoft 365',    mx: ['outlook.com','protection.outlook.com'], spf: ['spf.protection.outlook.com'] },
+  { name: 'SendGrid',         spf: ['sendgrid.net'] },
+  { name: 'Mailchimp',        spf: ['spf.mandrillapp.com'] },
+  { name: 'Amazon SES',       mx: ['amazonses.com'], spf: ['amazonses.com'] },
+  { name: 'Zoho Mail',        mx: ['zoho.com'], spf: ['zoho.com'] },
+]
+
+function detectESP(mxRaw, spfRaw) {
+  const mx  = (mxRaw||'').toLowerCase()
+  const spf = (spfRaw||'').toLowerCase()
+  return ESP_SIGNALS.filter(e =>
+    (e.mx?.some(m => mx.includes(m))) || (e.spf?.some(s => spf.includes(s)))
+  ).map(e => e.name)
+}
+
+function scoreColor(s) { return s >= 80 ? '#16a34a' : s >= 50 ? '#d97706' : '#dc2626' }
+
+function HealthBar({ score }) {
+  const color = scoreColor(score)
   return (
-    <div style={{ width: size, height: size, position: 'relative', flexShrink: 0 }}>
-      <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={bg} strokeWidth={6} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={6}
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontSize: size * 0.24, fontWeight: 800, color, lineHeight: 1 }}>{score}</span>
+    <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 5 }}>
+        <span style={{ fontSize: 32, fontWeight: 700, color, letterSpacing: '-0.02em', lineHeight: 1 }}>{score}</span>
+        <span style={{ fontSize: 12, color: 'var(--neutral-400)' }}>/100</span>
+        <span style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 9px', borderRadius: 99, background: `${color}18`, color, fontWeight: 600 }}>
+          {score >= 80 ? 'Excellent' : score >= 50 ? 'Needs work' : 'Poor'}
+        </span>
+      </div>
+      <div style={{ position: 'relative', height: 8, background: 'var(--neutral-100)', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${score}%`, background: color, borderRadius: 99, transition: 'width .6s ease' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--neutral-400)' }}>
+        <span>0</span><span style={{ color: '#dc2626' }}>50</span><span style={{ color: '#d97706' }}>80</span><span>100</span>
       </div>
     </div>
   )
 }
 
-function BigScoreRing({ score }) {
-  const size = 120
-  const r = 46
-  const circ = 2 * Math.PI * r
-  const offset = circ - (score / 100) * circ
-  const color = score >= 80 ? '#16a34a' : score >= 50 ? '#d97706' : '#dc2626'
-  const label = score >= 80 ? 'Excellent' : score >= 50 ? 'Needs work' : 'Critical'
+function FindingRow({ f }) {
+  const Icon = f.pass ? CheckCircle : f.severity === 'critical' || f.severity === 'high' ? XCircle : AlertTriangle
+  const color = f.pass ? '#16a34a' : SEV[f.severity] || '#94a3b8'
+  const bg    = f.pass ? '#f0fdf4' : SEV_BG[f.severity] || '#f8fafc'
+  const bdr   = f.pass ? '#bbf7d0' : `${color}44`
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div style={{ width: size, height: size, position: 'relative' }}>
-        <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-          <circle cx={60} cy={60} r={r} fill="none" stroke="var(--neutral-100)" strokeWidth={10} />
-          <circle cx={60} cy={60} r={r} fill="none" stroke={color} strokeWidth={10}
-            strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-            style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.16,1,0.3,1)', filter: `drop-shadow(0 0 6px ${color}66)` }} />
-        </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 32, fontWeight: 900, color, lineHeight: 1, letterSpacing: '-0.02em' }}>{score}</span>
-          <span style={{ fontSize: 10, color: 'var(--neutral-400)', fontWeight: 600 }}>/100</span>
+    <div style={{ borderRadius: 7, border: `1px solid ${bdr}`, background: bg, marginBottom: 4, padding: '7px 10px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <Icon size={13} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-800)' }}>{f.label}</div>
+        <div style={{ fontSize: 10, color: 'var(--neutral-500)', marginTop: 1, lineHeight: 1.4 }}>{f.desc}</div>
+        {!f.pass && f.fix && (
+          <div style={{ marginTop: 5, fontSize: 10, color: 'var(--neutral-600)', background: 'rgba(255,255,255,0.7)', borderRadius: 5, padding: '4px 7px' }}>
+            💡 {f.fix}
+            {f.record && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 4, background: '#0e1624', borderRadius: 4, padding: '4px 8px', alignItems: 'flex-start' }}>
+                <code style={{ fontSize: 9, color: '#93c5fd', flex: 1, wordBreak: 'break-all', fontFamily: 'monospace', lineHeight: 1.5 }}>{f.record}</code>
+                <button onClick={() => navigator.clipboard.writeText(f.record)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 3, padding: '1px 5px', color: '#60a5fa', fontSize: 9, cursor: 'pointer', flexShrink: 0 }}>Copy</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {!f.pass && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99, background: color, color: '#fff', textTransform: 'uppercase', flexShrink: 0 }}>{f.severity}</span>}
+    </div>
+  )
+}
+
+function buildFindings(domain, spf, dkim, blacklist) {
+  const d = domain.domain
+  const policy = domain.dmarc_policy
+  const findings = [
+    { category: 'dmarc', label: 'DMARC record', pass: !!policy, severity: 'critical', desc: policy ? `p=${policy}` : 'No DMARC record found', fix: !policy ? 'Add a TXT record at _dmarc.' + d : null, record: !policy ? `v=DMARC1; p=none; rua=mailto:reports@pwonka.resend.app;` : null },
+    { category: 'dmarc', label: 'DMARC enforcement', pass: policy === 'reject', severity: policy === 'quarantine' ? 'medium' : 'high', desc: policy === 'reject' ? 'p=reject — full protection' : policy === 'quarantine' ? 'p=quarantine — upgrade to p=reject' : policy === 'none' ? 'p=none — monitoring only' : 'No DMARC', fix: policy && policy !== 'reject' ? 'Upgrade to p=reject after DKIM is active' : null, record: policy && policy !== 'reject' ? `v=DMARC1; p=reject; rua=mailto:reports@pwonka.resend.app;` : null },
+    { category: 'spf', label: 'SPF record', pass: !!spf, severity: 'critical', desc: spf ? (spf.is_valid ? 'Valid SPF record' : `SPF has issues — ${spf.lookup_count} lookups`) : 'No SPF record', fix: !spf ? 'Add v=spf1 TXT record' : null },
+    { category: 'dkim', label: 'DKIM signing', pass: dkim?.length > 0, severity: 'critical', desc: dkim?.length > 0 ? `${dkim.length} selector(s) found` : 'No DKIM records found', fix: !dkim?.length ? 'Enable DKIM in your email provider' : null },
+    { category: 'blacklist', label: 'Blacklist status', pass: !blacklist || blacklist.listed_count === 0, severity: blacklist?.listed_count > 2 ? 'critical' : 'high', desc: !blacklist ? 'Not checked yet' : blacklist.listed_count === 0 ? `Clean on all ${blacklist.checked} lists` : `Listed on ${blacklist.listed_count} blacklist(s)`, fix: blacklist?.listed_count > 0 ? 'Request delisting from affected blacklists' : null },
+  ]
+  return findings
+}
+
+function DomainRow({ domain, spf, dkim, blacklist, expanded, onToggle, onNavigate }) {
+  const score   = domain.health_score || 0
+  const color   = scoreColor(score)
+  const policy  = domain.dmarc_policy
+  const findings= buildFindings(domain, spf, dkim, blacklist)
+  const critical= findings.filter(f => !f.pass && f.severity === 'critical').length
+  const esps    = detectESP(domain.mx_raw, spf?.raw_record)
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--neutral-100)', paddingBottom: expanded ? 12 : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', cursor: 'pointer' }} onClick={onToggle}>
+        <div style={{ width: 42, height: 42, borderRadius: '50%', border: `2.5px solid ${color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color }}>{score}</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--neutral-800)', marginBottom: 3 }}>{domain.domain}</div>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {policy && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 99, background: policy === 'reject' ? '#dcfce7' : policy === 'quarantine' ? '#fef3c7' : '#fee2e2', color: policy === 'reject' ? '#16a34a' : policy === 'quarantine' ? '#b45309' : '#dc2626' }}>p={policy}</span>}
+            {domain.status === 'active' && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 99, background: '#dcfce7', color: '#16a34a' }}>verified</span>}
+            {critical > 0 && <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 99, background: '#fee2e2', color: '#dc2626' }}>{critical} critical</span>}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={e => { e.stopPropagation(); onNavigate() }} style={{ fontSize: 11, color: 'var(--brand-500)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>Details</button>
+          {expanded ? <ChevronUp size={14} color="var(--neutral-400)" /> : <ChevronDown size={14} color="var(--neutral-400)" />}
         </div>
       </div>
-      <span style={{ fontSize: 12, fontWeight: 700, color, padding: '2px 10px', borderRadius: 99, background: `${color}18` }}>{label}</span>
+
+      {expanded && (
+        <div style={{ background: 'var(--neutral-50)', borderRadius: 8, padding: '12px', marginTop: 4 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 10 }}>
+            {findings.map((f, i) => <FindingRow key={i} f={f} />)}
+          </div>
+          {esps.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: 'var(--neutral-400)', fontWeight: 600 }}>Senders:</span>
+              {esps.map((e, i) => (
+                <span key={i} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: 'var(--brand-50)', border: '1px solid var(--brand-150)', color: 'var(--brand-700)' }}>{e}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
-}
-
-function PolicyBadge({ policy }) {
-  const map = {
-    none:        { bg: '#fee2e2', color: '#dc2626', label: 'p=none' },
-    quarantine:  { bg: '#fef3c7', color: '#b45309', label: 'p=quarantine' },
-    reject:      { bg: '#dcfce7', color: '#16a34a', label: 'p=reject' },
-  }
-  const cfg = map[policy] || { bg: 'var(--neutral-100)', color: 'var(--neutral-500)', label: 'No record' }
-  return <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
 }
 
 export function DashboardPage() {
-  const { currentOrg, isAdmin } = useOrg()
+  const { currentOrg } = useOrg()
   const { domains, loading } = useDomains()
   const navigate = useNavigate()
-  const [members, setMembers] = useState([])
+  const [members, setMembers]         = useState([])
+  const [expanded, setExpanded]       = useState(null)
+  const [filterDomain, setFilter]     = useState('all')
+  const [domainData, setDomainData]   = useState({})
+  const [loadingData, setLoadingData] = useState({})
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -76,22 +155,47 @@ export function DashboardPage() {
       .then(({ data }) => setMembers(data || []))
   }, [currentOrg])
 
+  async function loadDomainData(domainId, domainName) {
+    if (domainData[domainId]) return
+    setLoadingData(p => ({ ...p, [domainId]: true }))
+    const [spfRes, dkimRes, blRes] = await Promise.all([
+      supabase.from('spf_records').select('*').eq('domain_id', domainId).eq('is_current', true).single(),
+      supabase.from('dkim_records').select('*').eq('domain_id', domainId).eq('is_current', true),
+      fetch(`/api/blacklist-check?domain=${domainName}`).then(r => r.json()).catch(() => null),
+    ])
+    setDomainData(p => ({ ...p, [domainId]: { spf: spfRes.data, dkim: dkimRes.data || [], blacklist: blRes } }))
+    setLoadingData(p => ({ ...p, [domainId]: false }))
+  }
+
+  function toggleDomain(id, name) {
+    if (expanded === id) { setExpanded(null); return }
+    setExpanded(id)
+    loadDomainData(id, name)
+  }
+
   if (!currentOrg) return (
     <div className="page-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
       <div className="empty-state">
         <div className="empty-icon"><Building2 size={28} /></div>
         <p className="empty-title">No organisation selected</p>
-        <p className="empty-desc">Create or join an organisation to start managing DNS.</p>
+        <p className="empty-desc">Create or join an organisation to start monitoring DNS.</p>
       </div>
     </div>
   )
 
-  const activeDomains = domains.filter(d => d.status === 'active')
-  const avgHealth = activeDomains.length
-    ? Math.round(activeDomains.reduce((sum, d) => sum + (d.health_score || 0), 0) / activeDomains.length) : 0
-  const pendingDomains = domains.filter(d => d.status === 'pending_verification')
-  const rejectCount = domains.filter(d => d.dmarc_policy === 'reject').length
-  const criticalCount = domains.filter(d => (d.health_score || 0) < 50).length
+  const filtered     = filterDomain === 'all' ? domains : domains.filter(d => d.id === filterDomain)
+  const activeDomains= domains.filter(d => d.status === 'active')
+  const avgScore     = activeDomains.length ? Math.round(activeDomains.reduce((s, d) => s + (d.health_score || 0), 0) / activeDomains.length) : 0
+  const rejectCount  = domains.filter(d => d.dmarc_policy === 'reject').length
+  const criticalCount= domains.filter(d => (d.health_score || 0) < 50).length
+
+  // Global action plan from all domains
+  const allFindings = domains.flatMap(d => {
+    const dd = domainData[d.id] || {}
+    return buildFindings(d, dd.spf, dd.dkim, dd.blacklist)
+      .filter(f => !f.pass)
+      .map(f => ({ ...f, domain: d.domain }))
+  }).sort((a, b) => (SEV_ORDER[a.severity] || 3) - (SEV_ORDER[b.severity] || 3))
 
   return (
     <div className="page-content fade-in">
@@ -99,145 +203,157 @@ export function DashboardPage() {
       <div className="page-header">
         <div className="page-header-left">
           <h1>{greeting} 👋</h1>
-          <p>DNS health overview for <strong style={{ color: 'var(--neutral-700)' }}>{currentOrg.name}</strong></p>
+          <p>Command Centre — <strong>{currentOrg.name}</strong></p>
         </div>
-        <button className="btn btn-primary" onClick={() => navigate('/domains')}>
-          <Plus size={15} /><span>Add Domain</span>
-        </button>
+        <button className="btn btn-primary" onClick={() => navigate('/domains')}><Plus size={14} />Add Domain</button>
+      </div>
+
+      {/* Domain filter tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: '1.25rem', background: 'var(--neutral-100)', padding: 4, borderRadius: 10, width: 'fit-content' }}>
+        <button onClick={() => setFilter('all')} className={`tab ${filterDomain === 'all' ? 'active' : ''}`} style={{ fontSize: 12 }}>All domains</button>
+        {domains.slice(0, 4).map(d => (
+          <button key={d.id} onClick={() => setFilter(d.id)} className={`tab ${filterDomain === d.id ? 'active' : ''}`} style={{ fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.domain}</button>
+        ))}
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.25rem' }}>
         {[
-          { label: 'Total Domains',   value: domains.length,          sub: `${activeDomains.length} active`,       icon: <Globe size={16} />,        accent: '#1a6bff' },
-          { label: 'Avg Health',      value: avgHealth,               sub: 'across all domains',                    icon: <TrendingUp size={16} />,   accent: avgHealth >= 80 ? '#16a34a' : avgHealth >= 50 ? '#d97706' : '#dc2626', big: true },
-          { label: 'p=reject',        value: rejectCount,             sub: `of ${domains.length} domains`,          icon: <Shield size={16} />,       accent: '#16a34a' },
-          { label: 'Need attention',  value: criticalCount + pendingDomains.length, sub: 'pending or score < 50',   icon: <AlertTriangle size={16} />, accent: criticalCount + pendingDomains.length > 0 ? '#dc2626' : '#16a34a' },
+          { label: 'Total domains',   value: domains.length,  sub: `${activeDomains.length} active`, color: '#1a6bff' },
+          { label: 'p=reject',        value: rejectCount,     sub: `of ${domains.length} domains`,   color: '#16a34a' },
+          { label: 'Need attention',  value: criticalCount,   sub: 'score below 50',                 color: criticalCount > 0 ? '#dc2626' : '#16a34a' },
+          { label: 'Team members',    value: members.length,  sub: currentOrg.name,                  color: '#7c3aed' },
         ].map(s => (
-          <div key={s.label} className="card" style={{ padding: '1.25rem', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, width: 3, height: '100%', background: s.accent, borderRadius: '12px 0 0 12px' }} />
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: `${s.accent}15`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.accent }}>
-                {s.icon}
-              </div>
-            </div>
-            {loading
-              ? <div className="skeleton" style={{ height: 40, width: 64 }} />
-              : <div style={{ fontSize: s.big ? 36 : 32, fontWeight: 900, color: s.accent, lineHeight: 1, letterSpacing: '-0.03em' }}>{s.value}</div>
-            }
-            <div style={{ fontSize: 12, color: 'var(--neutral-400)', marginTop: 4 }}>{s.sub}</div>
+          <div key={s.label} className="card" style={{ padding: '1rem 1.125rem', borderLeft: `3px solid ${s.color}` }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>{s.label}</div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: s.color, letterSpacing: '-0.02em', lineHeight: 1 }}>{loading ? '—' : s.value}</div>
+            <div style={{ fontSize: 11, color: 'var(--neutral-400)', marginTop: 3 }}>{s.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* Main grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.25rem', alignItems: 'start' }}>
 
-        {/* Domains */}
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
-            <h3 style={{ margin: 0 }}>Your domains</h3>
-            <button className="btn btn-ghost btn-sm" onClick={() => navigate('/domains')}>View all <ArrowRight size={13} /></button>
-          </div>
-
-          {loading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 76, borderRadius: 'var(--radius-lg)' }} />)}
-            </div>
-          ) : domains.length === 0 ? (
-            <div className="card">
-              <div className="empty-state">
-                <div className="empty-icon"><Globe size={28} /></div>
-                <p className="empty-title">No domains yet</p>
-                <p className="empty-desc">Add your first domain to start monitoring.</p>
-                <button className="btn btn-primary" onClick={() => navigate('/domains')}><Plus size={15} /><span>Add domain</span></button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
-              {domains.slice(0, 6).map(domain => (
-                <div key={domain.id} className="domain-card" onClick={() => navigate(`/domains/${domain.id}`)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.125rem', cursor: 'pointer', transition: 'all 0.15s' }}>
-                  <HealthRing score={domain.health_score || 0} size={56} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="domain-name" style={{ fontWeight: 700, marginBottom: 4 }}>{domain.domain}</div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {domain.status === 'active'
-                        ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#dcfce7', color: '#16a34a', display: 'flex', alignItems: 'center', gap: 3 }}><CheckCircle size={9} />Verified</span>
-                        : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#b45309', display: 'flex', alignItems: 'center', gap: 3 }}><Clock size={9} />Pending</span>
-                      }
-                      <PolicyBadge policy={domain.dmarc_policy} />
-                    </div>
-                  </div>
-                  <ArrowRight size={15} color="var(--neutral-300)" />
+        {/* Left — domains */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div className="card">
+            <div className="card-header"><h4 style={{ margin: 0 }}>Domains & security status</h4><span style={{ fontSize: 11, color: 'var(--neutral-400)' }}>click to expand inline audit</span></div>
+            <div className="card-body" style={{ padding: '0 1.25rem' }}>
+              {loading ? [1,2,3].map(i => <div key={i} className="skeleton" style={{ height: 64, borderRadius: 8, marginBottom: 8 }} />) :
+               filtered.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-icon"><Globe size={24} /></div>
+                  <p className="empty-title">No domains yet</p>
+                  <button className="btn btn-primary" onClick={() => navigate('/domains')}><Plus size={14} />Add domain</button>
                 </div>
+              ) : filtered.map(d => (
+                <DomainRow
+                  key={d.id}
+                  domain={d}
+                  spf={domainData[d.id]?.spf}
+                  dkim={domainData[d.id]?.dkim}
+                  blacklist={domainData[d.id]?.blacklist}
+                  expanded={expanded === d.id}
+                  onToggle={() => toggleDomain(d.id, d.domain)}
+                  onNavigate={() => navigate(`/domains/${d.id}`)}
+                />
               ))}
             </div>
-          )}
+          </div>
+
+          {/* Attack surface */}
+          {expanded && domainData[expanded] && (() => {
+            const d = domains.find(x => x.id === expanded)
+            if (!d) return null
+            const policy = d.dmarc_policy
+            const spf    = domainData[expanded]?.spf
+            const vectors = [
+              { label: 'Direct domain spoofing', risk: !policy || policy === 'none' ? 'high' : policy === 'quarantine' ? 'medium' : 'low', desc: policy === 'reject' ? 'p=reject blocks spoofed emails' : policy === 'quarantine' ? 'p=quarantine — some spoofed emails reach spam' : 'No enforcement — spoofed emails delivered' },
+              { label: 'Subdomain spoofing',     risk: policy === 'reject' ? 'low' : 'medium', desc: 'Add sp=reject to DMARC to protect subdomains' },
+              { label: 'SPF bypass',             risk: !spf ? 'high' : spf.is_valid ? 'low' : 'medium', desc: !spf ? 'No SPF record' : spf.is_valid ? 'SPF valid and within limits' : 'SPF has issues' },
+              { label: 'Display name spoofing',  risk: policy === 'reject' ? 'low' : 'medium', desc: 'DKIM signing helps verify sender identity' },
+            ]
+            const riskColor = { high: '#dc2626', medium: '#d97706', low: '#16a34a' }
+            const riskBg    = { high: '#fee2e2', medium: '#fef3c7', low: '#dcfce7' }
+            return (
+              <div className="card">
+                <div className="card-header"><h4 style={{ margin: 0 }}>Attack surface — {d.domain}</h4></div>
+                <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {vectors.map((v, i) => (
+                    <div key={i} style={{ padding: '10px 12px', borderRadius: 8, background: riskBg[v.risk], border: `1px solid ${riskColor[v.risk]}44` }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: riskColor[v.risk], marginBottom: 3 }}>{v.label} — {v.risk}</div>
+                      <div style={{ fontSize: 10, color: 'var(--neutral-500)', lineHeight: 1.4 }}>{v.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Right panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-          {/* Big score card */}
-          {activeDomains.length > 0 && (
-            <div className="card" style={{ padding: '1.25rem', textAlign: 'center' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--neutral-500)', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Portfolio health</div>
-              <BigScoreRing score={avgHealth} />
-              <div style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div style={{ background: 'var(--neutral-50)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#16a34a' }}>{rejectCount}</div>
-                  <div style={{ fontSize: 10, color: 'var(--neutral-400)', fontWeight: 600 }}>p=reject</div>
-                </div>
-                <div style={{ background: 'var(--neutral-50)', borderRadius: 8, padding: '8px 10px' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: criticalCount > 0 ? '#dc2626' : '#16a34a' }}>{criticalCount}</div>
-                  <div style={{ fontSize: 10, color: 'var(--neutral-400)', fontWeight: 600 }}>critical</div>
-                </div>
+          {/* Portfolio score — Option A */}
+          <div className="card">
+            <div className="card-header"><h4 style={{ margin: 0 }}>Portfolio health</h4></div>
+            <div className="card-body">
+              <HealthBar score={avgScore} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginTop: '1rem' }}>
+                {[
+                  { v: rejectCount,   l: 'p=reject',   c: '#16a34a' },
+                  { v: criticalCount, l: 'critical',    c: '#dc2626' },
+                  { v: domains.length,l: 'domains',     c: '#1a6bff' },
+                ].map(s => (
+                  <div key={s.l} style={{ textAlign: 'center', background: 'var(--neutral-50)', borderRadius: 7, padding: '8px 4px' }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: s.c }}>{s.v}</div>
+                    <div style={{ fontSize: 10, color: 'var(--neutral-400)' }}>{s.l}</div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Action plan */}
+          <div className="card">
+            <div className="card-header">
+              <h4 style={{ margin: 0 }}>Action plan</h4>
+              {allFindings.length > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 99, background: '#fee2e2', color: '#dc2626' }}>{allFindings.length} issues</span>}
+            </div>
+            <div className="card-body" style={{ padding: '0.5rem 1rem' }}>
+              {allFindings.length === 0 ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '0.5rem 0', color: '#16a34a', fontSize: 13 }}>
+                  <CheckCircle size={15} />All domains are healthy
+                </div>
+              ) : allFindings.slice(0, 6).map((f, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--neutral-100)', alignItems: 'flex-start' }}>
+                  <div style={{ width: 18, height: 18, borderRadius: '50%', background: SEV[f.severity] || '#94a3b8', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i + 1}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-800)' }}>{f.label}</div>
+                    <div style={{ fontSize: 10, color: 'var(--neutral-400)' }}>{f.domain}</div>
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99, background: SEV[f.severity], color: '#fff', textTransform: 'uppercase', flexShrink: 0 }}>{f.severity}</span>
+                </div>
+              ))}
+              {allFindings.length > 6 && <div style={{ fontSize: 11, color: 'var(--neutral-400)', paddingTop: 6, textAlign: 'center' }}>{allFindings.length - 6} more issues — expand domains above</div>}
+            </div>
+          </div>
 
           {/* Quick actions */}
           <div className="card">
             <div className="card-header"><h4 style={{ margin: 0 }}>Quick actions</h4></div>
-            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.75rem' }}>
+            <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0.75rem' }}>
               {[
-                { label: 'Add new domain',       icon: <Plus size={14} />,     to: '/domains',  primary: true },
-                { label: 'Check DMARC policy',   icon: <Shield size={14} />,   to: '/dmarc' },
-                { label: 'View SPF records',     icon: <Activity size={14} />, to: '/spf' },
-                { label: 'Invite team member',   icon: <Users size={14} />,    to: '/members' },
-                { label: 'Analyse email headers',icon: <Zap size={14} />,      to: '/email-headers' },
+                { label: 'Add new domain',        icon: <Plus size={13} />,   to: '/domains',        primary: true },
+                { label: 'Security audit',         icon: <Shield size={13} />, to: '/audit' },
+                { label: 'Email header analyser',  icon: <Zap size={13} />,    to: '/email-headers' },
+                { label: 'Invite team member',     icon: <Users size={13} />,  to: '/members' },
               ].map(a => (
                 <button key={a.label} className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'}`}
                   style={{ width: '100%', justifyContent: 'flex-start' }} onClick={() => navigate(a.to)}>
                   {a.icon}<span>{a.label}</span>
                 </button>
               ))}
-            </div>
-          </div>
-
-          {/* Policy breakdown */}
-          <div className="card">
-            <div className="card-header"><h4 style={{ margin: 0 }}>DMARC policies</h4></div>
-            <div className="card-body" style={{ padding: '1rem' }}>
-              {['reject','quarantine','none'].map(p => {
-                const count = domains.filter(d => d.dmarc_policy === p).length
-                const pct = domains.length ? Math.round((count/domains.length)*100) : 0
-                const colors = { reject:'#16a34a', quarantine:'#d97706', none:'#dc2626' }
-                return (
-                  <div key={p} style={{ marginBottom: '0.875rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: 12, color: 'var(--neutral-600)', fontFamily: 'var(--font-mono)' }}>p={p}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: colors[p] }}>{count}</span>
-                    </div>
-                    <div style={{ height: 5, background: 'var(--neutral-100)', borderRadius: 99, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${pct}%`, background: colors[p], borderRadius: 99, transition: 'width 0.6s ease' }} />
-                    </div>
-                  </div>
-                )
-              })}
-              {domains.length === 0 && <p style={{ fontSize: 12, textAlign: 'center', color: 'var(--neutral-400)' }}>No data yet</p>}
             </div>
           </div>
         </div>
