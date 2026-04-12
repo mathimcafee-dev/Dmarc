@@ -67,7 +67,7 @@ export function useDomains() {
     if (!domain) return { error: { message: 'Domain not found' } }
 
     try {
-      const res = await fetch(`/api/verify-domain?domain=${domain.domain}&token=${domain.verification_token}`)
+      const res = await fetch(`/api/dns-lookup?domain=${domain.domain}&token=${domain.verification_token}`)
       const result = await res.json()
       if (result.verified) {
         const { data, error } = await supabase
