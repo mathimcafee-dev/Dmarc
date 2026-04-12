@@ -154,7 +154,7 @@ export function ReportsPage() {
       if (!domain) throw new Error('Could not find domain in XML')
       const domainRow = domains.find(d => d.domain.toLowerCase() === domain.toLowerCase())
       if (!domainRow) throw new Error(`Domain ${domain} not found in your account`)
-      const res = await fetch('/api/ingest-report', {
+      const res = await fetch('/api/email-webhook', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-secret': 'dnsmonitor2024ingest' },
         body: JSON.stringify({ xml, domainId: domainRow.id, orgId: currentOrg.id }),
