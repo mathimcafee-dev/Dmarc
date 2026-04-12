@@ -90,7 +90,7 @@ function buildFindings(domain, spf, dkim, blacklist) {
   return findings
 }
 
-function DomainRow({ domain, spf, dkim, blacklist, expanded, onToggle, onNavigate }) {
+function DomainRow({ domain, spf, dkim, blacklist, expanded, onToggle, onNavigate, onAudit }) {
   const score   = domain.health_score || 0
   const color   = scoreColor(score)
   const policy  = domain.dmarc_policy
@@ -114,6 +114,7 @@ function DomainRow({ domain, spf, dkim, blacklist, expanded, onToggle, onNavigat
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={e => { e.stopPropagation(); onNavigate() }} style={{ fontSize: 11, color: 'var(--brand-500)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>Details</button>
+          <button onClick={e => { e.stopPropagation(); onAudit(domain.domain) }} style={{ fontSize: 11, color: '#fff', background: '#1a6bff', border: 'none', borderRadius: 5, cursor: 'pointer', padding: '4px 9px', fontWeight: 600 }}>Audit</button>
           {expanded ? <ChevronUp size={14} color="var(--neutral-400)" /> : <ChevronDown size={14} color="var(--neutral-400)" />}
         </div>
       </div>
@@ -137,6 +138,164 @@ function DomainRow({ domain, spf, dkim, blacklist, expanded, onToggle, onNavigat
   )
 }
 
+
+// ── Inline Security Audit ─────────────────────────────────────────────────────
+function InlineAudit({ triggerDomain, onClearTrigger }) {
+  const [domain, setDomain] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult]   = useState(null)
+  const [error, setError]     = useState('')
+
+  useEffect(() => {
+    if (triggerDomain) { setDomain(triggerDomain); run(triggerDomain); onClearTrigger?.() }
+  }, [triggerDomain])
+
+  async function run(d) {
+    const target = (d || domain).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+    if (!target) return
+    setLoading(true); setResult(null); setError('')
+    try {
+      const res  = await fetch(`/api/full-audit?domain=${encodeURIComponent(target)}`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setResult(data)
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const SORDER = { critical: 0, high: 1, medium: 2, low: 3 }
+  const SCOLOR = { critical: '#dc2626', high: '#d97706', medium: '#2563eb', low: '#16a34a' }
+  const SBG    = { critical: '#fee2e2', high: '#fef3c7', medium: '#eff6ff', low: '#dcfce7' }
+
+  return (
+    <div style={{ marginTop: '1.5rem' }}>
+      <div className="card">
+        <div className="card-header">
+          <h4 style={{ margin: 0 }}>Security Audit — any domain</h4>
+          <span style={{ fontSize: 11, color: 'var(--neutral-400)' }}>Enter any domain to get a full scored audit</span>
+        </div>
+        <div className="card-body">
+          <div style={{ display: 'flex', gap: 8, marginBottom: result ? '1.25rem' : 0 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Globe size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--neutral-400)' }} />
+              <input className="input" style={{ paddingLeft: '2.25rem' }}
+                placeholder="e.g. google.com, yourcompany.com"
+                value={domain} onChange={e => setDomain(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && run()} />
+            </div>
+            <button className={`btn btn-primary ${loading ? 'btn-loading' : ''}`} onClick={() => run()} disabled={!domain.trim() || loading}>
+              {!loading && <><Shield size={14} />Audit</>}
+            </button>
+          </div>
+          {error && <div className="alert-banner danger" style={{ marginTop: 8 }}><AlertTriangle size={14} /><span>{error}</span></div>}
+        </div>
+      </div>
+
+      {result && (
+        <div style={{ marginTop: '1.25rem', display: 'grid', gridTemplateColumns: '280px 1fr', gap: '1.25rem', alignItems: 'start' }}>
+
+          {/* Score card */}
+          <div className="card">
+            <div className="card-body">
+              <div style={{ textAlign: 'center', padding: '0.5rem 0 1rem' }}>
+                <div style={{ fontSize: 11, color: 'var(--neutral-400)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>{result.domain}</div>
+                <div style={{ fontSize: 52, fontWeight: 700, color: result.score >= 75 ? '#16a34a' : result.score >= 50 ? '#d97706' : '#dc2626', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                  {result.score >= 90 ? 'A' : result.score >= 75 ? 'B' : result.score >= 60 ? 'C' : result.score >= 40 ? 'D' : 'F'}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 600, color: result.score >= 75 ? '#16a34a' : result.score >= 50 ? '#d97706' : '#dc2626', marginTop: 4 }}>
+                  {result.score}<span style={{ fontSize: 13, color: 'var(--neutral-400)', fontWeight: 400 }}>/100</span>
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 600, padding: '3px 12px', borderRadius: 99, display: 'inline-block', marginTop: 8, background: result.score >= 75 ? '#dcfce7' : result.score >= 50 ? '#fef3c7' : '#fee2e2', color: result.score >= 75 ? '#16a34a' : result.score >= 50 ? '#b45309' : '#dc2626' }}>
+                  {result.verdict?.split('—')[0]?.trim()}
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6 }}>
+                {[
+                  { label: 'Critical', count: result.findings.filter(f => !f.pass && f.severity === 'critical').length, color: '#dc2626', bg: '#fee2e2' },
+                  { label: 'High',     count: result.findings.filter(f => !f.pass && f.severity === 'high').length,     color: '#d97706', bg: '#fef3c7' },
+                  { label: 'Medium',   count: result.findings.filter(f => !f.pass && f.severity === 'medium').length,   color: '#2563eb', bg: '#eff6ff' },
+                  { label: 'Passing',  count: result.findings.filter(f => f.pass).length,                              color: '#16a34a', bg: '#dcfce7' },
+                ].map(s => (
+                  <div key={s.label} style={{ textAlign: 'center', padding: '8px 4px', background: s.bg, borderRadius: 7 }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: s.color }}>{s.count}</div>
+                    <div style={{ fontSize: 10, color: s.color, fontWeight: 600 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {result.providers?.length > 0 && (
+                <div style={{ marginTop: '1rem' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--neutral-500)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Detected senders</div>
+                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                    {result.providers.map((p, i) => (
+                      <span key={i} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 99, background: 'var(--brand-50)', border: '1px solid var(--brand-150)', color: 'var(--brand-700)' }}>{p.name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right — findings + action plan */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+            {/* Findings grid */}
+            <div className="card">
+              <div className="card-header"><h4 style={{ margin: 0 }}>Security findings</h4></div>
+              <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: '0.75rem 1rem' }}>
+                {result.findings.map((f, i) => {
+                  const color = f.pass ? '#16a34a' : SCOLOR[f.severity] || '#94a3b8'
+                  const bg    = f.pass ? '#f0fdf4' : SBG[f.severity] || '#f8fafc'
+                  const Icon  = f.pass ? CheckCircle : f.severity === 'critical' ? XCircle : AlertTriangle
+                  return (
+                    <div key={i} style={{ borderRadius: 7, border: `1px solid ${f.pass ? '#bbf7d0' : color + '44'}`, background: bg, padding: '8px 10px', display: 'flex', gap: 7, alignItems: 'flex-start' }}>
+                      <Icon size={13} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-800)' }}>{f.label}</div>
+                        <div style={{ fontSize: 10, color: 'var(--neutral-500)', marginTop: 1, lineHeight: 1.4 }}>{f.desc}</div>
+                      </div>
+                      {!f.pass && <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 99, background: color, color: '#fff', textTransform: 'uppercase', flexShrink: 0 }}>{f.severity}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Attack surface + Action plan */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="card">
+                <div className="card-header"><h4 style={{ margin: 0 }}>Attack surface</h4></div>
+                <div className="card-body" style={{ padding: '0.75rem 1rem' }}>
+                  {result.attackSurface?.map((v, i) => (
+                    <div key={i} style={{ padding: '8px 10px', borderRadius: 7, background: v.risk === 'high' ? '#fff5f5' : v.risk === 'medium' ? '#fffbeb' : '#f0fdf4', border: `1px solid ${v.risk === 'high' ? '#fecaca' : v.risk === 'medium' ? '#fde047' : '#bbf7d0'}`, marginBottom: 5 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: v.risk === 'high' ? '#dc2626' : v.risk === 'medium' ? '#b45309' : '#16a34a' }}>{v.vector}</div>
+                      <div style={{ fontSize: 10, color: 'var(--neutral-500)', marginTop: 2, lineHeight: 1.4 }}>{v.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-header"><h4 style={{ margin: 0 }}>Action plan</h4></div>
+                <div className="card-body" style={{ padding: '0.5rem 1rem' }}>
+                  {result.findings.filter(f => !f.pass).sort((a,b) => (SORDER[a.severity]||3)-(SORDER[b.severity]||3)).map((f, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--neutral-100)', alignItems: 'flex-start' }}>
+                      <div style={{ width: 17, height: 17, borderRadius: '50%', background: SCOLOR[f.severity] || '#94a3b8', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>{i+1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--neutral-800)' }}>{f.label}</div>
+                        <div style={{ fontSize: 10, color: 'var(--neutral-500)' }}>{f.fix || f.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {result.findings.every(f => f.pass) && <div style={{ fontSize: 12, color: '#16a34a', display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}><CheckCircle size={14} />No issues found</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const { currentOrg } = useOrg()
   const { domains, loading } = useDomains()
@@ -146,6 +305,7 @@ export function DashboardPage() {
   const [filterDomain, setFilter]     = useState('all')
   const [domainData, setDomainData]   = useState({})
   const [loadingData, setLoadingData] = useState({})
+  const [auditTarget, setAuditTarget]   = useState(null)
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
@@ -256,6 +416,7 @@ export function DashboardPage() {
                   expanded={expanded === d.id}
                   onToggle={() => toggleDomain(d.id, d.domain)}
                   onNavigate={() => navigate(`/domains/${d.id}`)}
+                  onAudit={(dn) => { setAuditTarget(dn); setTimeout(() => document.getElementById('inline-audit')?.scrollIntoView({behavior:'smooth'}), 100) }}
                 />
               ))}
             </div>
@@ -357,6 +518,11 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Inline Security Audit */}
+      <div id="inline-audit">
+        <InlineAudit triggerDomain={auditTarget} onClearTrigger={() => setAuditTarget(null)} />
       </div>
     </div>
   )
