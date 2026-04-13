@@ -190,17 +190,10 @@ module.exports = async function handler(req, res) {
 
       if (!isReport) { console.log('Skipping non-report attachment:', filename); continue }
 
-      // Fetch actual attachment content from Resend
-      let base64content
-      try {
-        const attRes = await fetch(
-          `https://api.resend.com/emails/${emailId}/attachments/${att.id}`,
-          { headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` } }
-        )
-        const attData = await attRes.json()
-        base64content = attData.content
-      } catch (e) {
-        console.error('Failed to fetch attachment:', e.message)
+      // Use attachment content from webhook payload (Resend includes base64 content inline)
+      const base64content = att.content
+      if (!base64content) {
+        console.error('No content in attachment:', filename)
         continue
       }
 
