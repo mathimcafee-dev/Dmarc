@@ -31,7 +31,6 @@ const NEXT_STEPS = [
   'Have your PKI team review the integration documentation',
 ]
 
-// Triage — only 4 questions, some conditional
 const TRIAGE_QS = [
   { id:'primary_pain', title:'What is the single biggest PKI problem you need solved?', sub:'This routes the entire discovery — be direct.',
     opts:[
@@ -68,7 +67,6 @@ const TRIAGE_QS = [
     ]},
 ]
 
-// Deep question bank — each has optional showIf(triage, deepAnswersSoFar)
 const DEEP_BANK = {
   scm_enterprise:[
     {id:'ca_count',title:'How many CAs are you currently working with?',sub:'CA sprawl is the primary driver of outages.',opts:[{val:'one',label:'One CA',desc:'Want more control'},{val:'two_three',label:'2–3 CAs',desc:'Consolidation needed'},{val:'four_plus',label:'4+ CAs',desc:'Significant sprawl'},{val:'unknown',label:'Unknown',desc:'No full inventory'}]},
@@ -163,15 +161,10 @@ const DEEP_BANK = {
 function getTriageQuestions(answers) {
   return TRIAGE_QS.filter(q => !q.showIf || q.showIf(answers))
 }
-
 function getDeepQuestions(product, triageAnswers, deepAnswersSoFar) {
   const bank = DEEP_BANK[product] || []
-  return bank.filter(q => {
-    if (!q.showIf) return true
-    try { return q.showIf(triageAnswers, deepAnswersSoFar) } catch { return true }
-  })
+  return bank.filter(q => { if (!q.showIf) return true; try { return q.showIf(triageAnswers, deepAnswersSoFar) } catch { return true } })
 }
-
 function routeProduct(triage) {
   const p = triage.primary_pain
   if (p === 'email_phishing') return 'smime'
@@ -179,10 +172,37 @@ function routeProduct(triage) {
   if (p === 'pqc_readiness')  return 'pqc'
   if (p === 'bimi')           return 'vmc_cmc'
   if (p === 'devops_certs')   return 'devops'
-  if (p === 'internal_visibility')
-    return (triage.ms_ca === 'yes' || triage.ms_ca === 'partial') ? 'ms_ca_mgmt' : 'private_pki'
+  if (p === 'internal_visibility') return (triage.ms_ca === 'yes' || triage.ms_ca === 'partial') ? 'ms_ca_mgmt' : 'private_pki'
   if (triage.ms_ca === 'yes' || triage.ms_ca === 'partial') return 'ms_ca_mgmt'
   return 'scm_enterprise'
+}
+
+const COUNTRIES = ['United States','United Kingdom','India','Germany','France','Australia','Canada','Singapore','UAE','Japan','Netherlands','Sweden','Switzerland','Brazil','Mexico','South Africa','Saudi Arabia','Other']
+const STATUS_META = {
+  pending:      { label:'Pending',      color:'#F59E0B', bg:'#FFFBEB' },
+  scheduled:    { label:'Scheduled',    color:'#3B82F6', bg:'#EFF6FF' },
+  completed:    { label:'Completed',    color:'#22C55E', bg:'#F0FDF4' },
+  quote_process:{ label:'Quote Process',color:'#8B5CF6', bg:'#F5F3FF' },
+}
+
+function handlePDF(s) {
+  const pm = PM[s.product_routed] || PM.scm_enterprise
+  const date = new Date(s.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+  const allAnswers = { ...s.triage_answers, ...s.deep_answers }
+  const answersHTML = Object.entries(allAnswers).map(([k,v]) =>
+    `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666;font-size:12px;text-transform:capitalize">${k.replace(/_/g,' ')}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:500;font-size:12px;text-transform:capitalize">${String(v).replace(/_/g,' ')}</td></tr>`
+  ).join('')
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>PKI Discovery — ${s.company_name}</title>
+<style>body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0;color:#1a2234;background:#f7f8fa}.cover{background:${pm.color};padding:40px 48px;color:white}.cover h1{margin:0 0 4px;font-size:26px;font-weight:700}.cover p{margin:0;opacity:.75;font-size:14px}.score-badge{display:inline-block;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;float:right;margin-top:-4px}.score-badge .num{font-size:28px;font-weight:700;line-height:1}.score-badge .lbl{font-size:11px;opacity:.7;margin-top:2px}.body{padding:32px 48px}.section-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8f9ab0;font-weight:600;margin:20px 0 8px}.summary{background:#f1f3f8;border-left:3px solid ${pm.color};border-radius:0 8px 8px 0;padding:12px 16px;font-size:13px;line-height:1.7;color:#2a3347;margin-bottom:20px}.info-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:20px}.info-card{background:white;border:1px solid #e8ecf4;border-radius:8px;padding:8px 12px}.info-card .lbl{font-size:10px;text-transform:uppercase;color:#8f9ab0;margin-bottom:3px}.info-card .val{font-size:13px;font-weight:500}table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;border:1px solid #e8ecf4}th{background:#f1f3f8;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#606d87;font-weight:600}.steps{display:flex;flex-direction:column;gap:8px}.step{display:flex;align-items:center;gap:10px;background:white;border:1px solid #e8ecf4;border-radius:8px;padding:10px 14px;font-size:13px}.step-num{width:22px;height:22px;border-radius:50%;background:${pm.color};color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}.footer{margin-top:32px;padding-top:16px;border-top:1px solid #e8ecf4;font-size:11px;color:#8f9ab0;text-align:center}</style></head><body>
+<div class="cover"><div class="score-badge"><div class="num">${s.match_score}%</div><div class="lbl">match score</div></div><div style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;opacity:.55;margin-bottom:6px">Recommended Sectigo solution</div><h1>${pm.icon} ${pm.label}</h1><p>PKI Discovery Report · ${s.customer_name} · ${s.company_name} · ${date}</p></div>
+<div class="body"><div class="section-label">Customer details</div><div class="info-grid"><div class="info-card"><div class="lbl">Contact</div><div class="val">${s.customer_name}</div></div><div class="info-card"><div class="lbl">Company</div><div class="val">${s.company_name}</div></div><div class="info-card"><div class="lbl">Email</div><div class="val">${s.email}</div></div><div class="info-card"><div class="lbl">Date</div><div class="val">${date}</div></div></div><div class="section-label">Assessment summary</div><div class="summary">${SUMMARIES[s.product_routed] || ''}</div><div class="section-label">Discovery answers (${Object.keys(allAnswers).length} questions)</div><table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>${answersHTML}</tbody></table><div class="section-label" style="margin-top:20px">Recommended next steps</div><div class="steps">${NEXT_STEPS.map((step,i)=>`<div class="step"><div class="step-num">${i+1}</div>${step}</div>`).join('')}</div><div class="footer">Generated by DNSMonitor PKI Discovery · Powered by Sectigo · Contact: linkedin.com/in/mathivanan-k-a90803108</div></div></body></html>`
+  const blob = new Blob([html], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `PKI-Discovery-${s.company_name.replace(/\s+/g,'-')}-${date.replace(/\s+/g,'-')}.html`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 export function PKIDiscoveryPage() {
@@ -192,6 +212,7 @@ export function PKIDiscoveryPage() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
+  // wizard
   const [phase, setPhase] = useState('triage')
   const [triageAnswers, setTriageAnswers] = useState({})
   const [triageIndex, setTriageIndex] = useState(0)
@@ -200,10 +221,17 @@ export function PKIDiscoveryPage() {
   const [product, setProduct] = useState(null)
   const [deepQs, setDeepQs] = useState([])
   const [picked, setPicked] = useState(null)
+  // lead capture (step 1: basic)
   const [showLead, setShowLead] = useState(false)
   const [lead, setLead] = useState({ customer_name:'', company_name:'', email:'' })
   const [saving, setSaving] = useState(false)
   const [savedSession, setSavedSession] = useState(null)
+  // extended lead form (step 2: post-result)
+  const [showExtended, setShowExtended] = useState(false)
+  const [extLead, setExtLead] = useState({ first_name:'', last_name:'', email:'', company_name:'', country:'', account_manager_id:'', meeting_date:'', meeting_time:'' })
+  const [accountManagers, setAccountManagers] = useState([])
+  const [savingExt, setSavingExt] = useState(false)
+  const [leadSaved, setLeadSaved] = useState(false)
   const cardRef = useRef(null)
 
   const triaQs = getTriageQuestions(triageAnswers)
@@ -215,20 +243,27 @@ export function PKIDiscoveryPage() {
   const phaseColor = phase === 'triage' ? '#1D9E75' : (PM[product]?.color || '#1A4FBA')
   const isLast = phase === 'triage' ? triageIndex === triaQs.length - 1 : deepIndex === deepQs.length - 1
 
-  useEffect(() => { if (currentOrg?.id) loadSessions() }, [currentOrg?.id])
+  useEffect(() => { if (currentOrg?.id) { loadSessions(); loadAMs() } }, [currentOrg?.id])
+
   async function loadSessions() {
     setLoading(true)
     const { data } = await supabase.from('pki_discovery_sessions').select('*').eq('org_id', currentOrg.id).order('created_at', { ascending: false })
     setSessions(data || []); setLoading(false)
   }
 
+  async function loadAMs() {
+    const { data } = await supabase
+      .from('pki_sales_roles')
+      .select('user_id, role, profiles(full_name, id)')
+      .eq('org_id', currentOrg.id)
+      .in('role', ['account_manager','vp_sales'])
+    setAccountManagers(data || [])
+  }
+
   useEffect(() => {
     if (!cardRef.current) return
-    cardRef.current.style.opacity = '0'
-    cardRef.current.style.transform = 'translateY(6px)'
-    const t = setTimeout(() => {
-      if (cardRef.current) { cardRef.current.style.transition = 'opacity 0.15s ease, transform 0.15s ease'; cardRef.current.style.opacity = '1'; cardRef.current.style.transform = 'translateY(0)' }
-    }, 40)
+    cardRef.current.style.opacity = '0'; cardRef.current.style.transform = 'translateY(6px)'
+    const t = setTimeout(() => { if (cardRef.current) { cardRef.current.style.transition = 'opacity 0.15s ease, transform 0.15s ease'; cardRef.current.style.opacity = '1'; cardRef.current.style.transform = 'translateY(0)' } }, 40)
     return () => clearTimeout(t)
   }, [triageIndex, deepIndex, phase])
 
@@ -238,13 +273,8 @@ export function PKIDiscoveryPage() {
       const na = { ...triageAnswers, [currentTriageQ.id]: picked }
       setTriageAnswers(na); setPicked(null)
       const nextTriaQs = getTriageQuestions(na)
-      if (triageIndex + 1 < nextTriaQs.length) {
-        setTriageIndex(i => i + 1)
-      } else {
-        const p = routeProduct(na)
-        const dqs = getDeepQuestions(p, na, {})
-        setProduct(p); setDeepQs(dqs); setDeepIndex(0); setPhase('deep')
-      }
+      if (triageIndex + 1 < nextTriaQs.length) { setTriageIndex(i => i + 1) }
+      else { const p = routeProduct(na); const dqs = getDeepQuestions(p, na, {}); setProduct(p); setDeepQs(dqs); setDeepIndex(0); setPhase('deep') }
     } else {
       const na = { ...deepAnswers, [currentDeepQ.id]: picked }
       setDeepAnswers(na); setPicked(null)
@@ -257,15 +287,9 @@ export function PKIDiscoveryPage() {
 
   function handleBack() {
     setPicked(null)
-    if (phase === 'deep' && deepIndex === 0) {
-      setPhase('triage'); setTriageIndex(triaQs.length - 1)
-      setPicked(triageAnswers[triaQs[triaQs.length - 1].id] || null)
-    } else if (phase === 'deep') {
-      const pq = deepQs[deepIndex - 1]
-      setDeepIndex(d => d - 1); setPicked(deepAnswers[pq.id] || null)
-    } else if (triageIndex > 0) {
-      setPicked(triageAnswers[triaQs[triageIndex - 1].id] || null); setTriageIndex(i => i - 1)
-    }
+    if (phase === 'deep' && deepIndex === 0) { setPhase('triage'); setTriageIndex(triaQs.length - 1); setPicked(triageAnswers[triaQs[triaQs.length - 1].id] || null) }
+    else if (phase === 'deep') { const pq = deepQs[deepIndex - 1]; setDeepIndex(d => d - 1); setPicked(deepAnswers[pq.id] || null) }
+    else if (triageIndex > 0) { setPicked(triageAnswers[triaQs[triageIndex - 1].id] || null); setTriageIndex(i => i - 1) }
   }
 
   async function handleSave() {
@@ -278,75 +302,45 @@ export function PKIDiscoveryPage() {
       product_routed: product, triage_answers: triageAnswers, deep_answers: deepAnswers, match_score: score,
     }).select().single()
     setSaving(false)
-    if (!error && data) { setSavedSession(data); setShowLead(false); setView('result'); await loadSessions() }
+    if (!error && data) {
+      setSavedSession(data); setShowLead(false)
+      // Pre-fill extended form
+      const parts = lead.customer_name.trim().split(' ')
+      setExtLead(p => ({ ...p, first_name: parts[0]||'', last_name: parts.slice(1).join(' ')||'', email: lead.email.trim(), company_name: lead.company_name.trim() }))
+      setLeadSaved(false)
+      setView('result')
+      await loadSessions()
+    }
   }
 
-  function handlePDF(s) {
-    const pm = PM[s.product_routed] || PM.scm_enterprise
-    const date = new Date(s.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
-    const allAnswers = { ...s.triage_answers, ...s.deep_answers }
-    const answersHTML = Object.entries(allAnswers).map(([k,v]) =>
-      `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666;font-size:12px;text-transform:capitalize">${k.replace(/_/g,' ')}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:500;font-size:12px;text-transform:capitalize">${String(v).replace(/_/g,' ')}</td></tr>`
-    ).join('')
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>PKI Discovery — ${s.company_name}</title>
-<style>
-  body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0;color:#1a2234;background:#f7f8fa}
-  .cover{background:${pm.color};padding:40px 48px;color:white}
-  .cover h1{margin:0 0 4px;font-size:26px;font-weight:700}
-  .cover p{margin:0;opacity:.75;font-size:14px}
-  .score-badge{display:inline-block;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;float:right;margin-top:-4px}
-  .score-badge .num{font-size:28px;font-weight:700;line-height:1}
-  .score-badge .lbl{font-size:11px;opacity:.7;margin-top:2px}
-  .body{padding:32px 48px}
-  .section-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8f9ab0;font-weight:600;margin:20px 0 8px}
-  .summary{background:#f1f3f8;border-left:3px solid ${pm.color};border-radius:0 8px 8px 0;padding:12px 16px;font-size:13px;line-height:1.7;color:#2a3347;margin-bottom:20px}
-  .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:20px}
-  .info-card{background:white;border:1px solid #e8ecf4;border-radius:8px;padding:8px 12px}
-  .info-card .lbl{font-size:10px;text-transform:uppercase;color:#8f9ab0;margin-bottom:3px}
-  .info-card .val{font-size:13px;font-weight:500}
-  table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;border:1px solid #e8ecf4}
-  th{background:#f1f3f8;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#606d87;font-weight:600}
-  .steps{display:flex;flex-direction:column;gap:8px}
-  .step{display:flex;align-items:center;gap:10px;background:white;border:1px solid #e8ecf4;border-radius:8px;padding:10px 14px;font-size:13px}
-  .step-num{width:22px;height:22px;border-radius:50%;background:${pm.color};color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-  .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e8ecf4;font-size:11px;color:#8f9ab0;text-align:center}
-</style></head><body>
-<div class="cover">
-  <div class="score-badge"><div class="num">${s.match_score}%</div><div class="lbl">match score</div></div>
-  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;opacity:.55;margin-bottom:6px">Recommended Sectigo solution</div>
-  <h1>${pm.icon} ${pm.label}</h1>
-  <p>PKI Discovery Report · ${s.customer_name} · ${s.company_name} · ${date}</p>
-</div>
-<div class="body">
-  <div class="section-label">Customer details</div>
-  <div class="info-grid">
-    <div class="info-card"><div class="lbl">Contact</div><div class="val">${s.customer_name}</div></div>
-    <div class="info-card"><div class="lbl">Company</div><div class="val">${s.company_name}</div></div>
-    <div class="info-card"><div class="lbl">Email</div><div class="val">${s.email}</div></div>
-    <div class="info-card"><div class="lbl">Date</div><div class="val">${date}</div></div>
-  </div>
-  <div class="section-label">Assessment summary</div>
-  <div class="summary">${SUMMARIES[s.product_routed] || ''}</div>
-  <div class="section-label">Discovery answers (${Object.keys(allAnswers).length} questions)</div>
-  <table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>${answersHTML}</tbody></table>
-  <div class="section-label" style="margin-top:20px">Recommended next steps</div>
-  <div class="steps">${NEXT_STEPS.map((step,i)=>`<div class="step"><div class="step-num">${i+1}</div>${step}</div>`).join('')}</div>
-  <div class="footer">Generated by DNSMonitor PKI Discovery · Powered by Sectigo · Contact consultant: linkedin.com/in/mathivanan-k-a90803108</div>
-</div>
-</body></html>`
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `PKI-Discovery-${s.company_name.replace(/\s+/g,'-')}-${date.replace(/\s+/g,'-')}.html`
-    a.click()
-    URL.revokeObjectURL(url)
+  async function handleExtSave() {
+    if (!extLead.first_name||!extLead.last_name||!extLead.email||!extLead.company_name||!extLead.country) return
+    setSavingExt(true)
+    await supabase.from('pki_leads').insert({
+      org_id: currentOrg.id,
+      session_id: savedSession.id,
+      first_name: extLead.first_name.trim(),
+      last_name: extLead.last_name.trim(),
+      email: extLead.email.trim(),
+      company_name: extLead.company_name.trim(),
+      country: extLead.country,
+      account_manager_id: extLead.account_manager_id || null,
+      meeting_date: extLead.meeting_date || null,
+      meeting_time: extLead.meeting_time || null,
+      product_routed: savedSession.product_routed,
+      created_by: user.id,
+      status: extLead.meeting_date ? 'scheduled' : 'pending',
+    })
+    setSavingExt(false)
+    setLeadSaved(true)
+    setShowExtended(false)
   }
 
   function startNew() {
     setPhase('triage'); setTriageIndex(0); setDeepIndex(0)
     setTriageAnswers({}); setDeepAnswers({}); setProduct(null); setDeepQs([]); setPicked(null)
     setLead({ customer_name:'', company_name:'', email:'' }); setShowLead(false); setSavedSession(null); setView('wizard')
+    setShowExtended(false); setLeadSaved(false)
   }
 
   async function deleteSession(id, e) {
@@ -357,7 +351,7 @@ export function PKIDiscoveryPage() {
     if (savedSession?.id === id) { setSavedSession(null); setView('list') }
   }
 
-  // LIST
+  // ── LIST ──────────────────────────────────────────────────────────────────
   if (view === 'list') {
     const grouped = sessions.reduce((acc, s) => { (acc[s.company_name] = acc[s.company_name] || []).push(s); return acc }, {})
     return (
@@ -372,7 +366,7 @@ export function PKIDiscoveryPage() {
           </div>
           <button onClick={startNew} className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:6 }}><Plus size={15}/> New discovery</button>
         </div>
-        {loading ? <div style={{ textAlign:'center', padding:'3rem', color:'var(--neutral-400)', fontSize:'0.875rem' }}>Loading…</div>
+        {loading ? <div style={{ textAlign:'center', padding:'3rem', color:'var(--neutral-400)' }}>Loading…</div>
         : sessions.length === 0 ? (
           <div style={{ background:'white', border:'1px dashed var(--neutral-200)', borderRadius:16, padding:'3rem 2rem', textAlign:'center' }}>
             <div style={{ fontSize:40, marginBottom:12 }}>🔍</div>
@@ -389,7 +383,7 @@ export function PKIDiscoveryPage() {
                     <div style={{ width:36, height:36, borderRadius:10, background:'var(--neutral-100)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1rem', fontWeight:700, color:'var(--neutral-600)' }}>{company.charAt(0).toUpperCase()}</div>
                     <div>
                       <div style={{ fontSize:'0.9375rem', fontWeight:600, color:'var(--neutral-800)' }}>{company}</div>
-                      <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>{cSessions.length} session{cSessions.length !== 1 ? 's' : ''}</div>
+                      <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>{cSessions.length} session{cSessions.length!==1?'s':''}</div>
                     </div>
                   </div>
                   {expanded === company ? <ChevronUp size={16} color="var(--neutral-400)"/> : <ChevronDown size={16} color="var(--neutral-400)"/>}
@@ -399,7 +393,7 @@ export function PKIDiscoveryPage() {
                     {cSessions.map((s, i) => {
                       const pm = PM[s.product_routed] || PM.scm_enterprise
                       return (
-                        <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1.25rem 0.75rem 1.5rem', borderBottom: i < cSessions.length - 1 ? '1px solid var(--neutral-100)' : 'none', gap:12, flexWrap:'wrap' }}>
+                        <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1.25rem 0.75rem 1.5rem', borderBottom: i < cSessions.length-1 ? '1px solid var(--neutral-100)':' none', gap:12, flexWrap:'wrap' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
                             <div style={{ display:'flex', alignItems:'center', gap:5, background:pm.bg, border:`1px solid ${pm.color}22`, borderRadius:8, padding:'4px 10px', flexShrink:0 }}>
                               <span style={{ fontSize:12 }}>{pm.icon}</span>
@@ -413,7 +407,7 @@ export function PKIDiscoveryPage() {
                           <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
                             {s.match_score && <span style={{ fontSize:'0.75rem', fontWeight:600, color:'var(--success-600)', background:'var(--success-50)', padding:'2px 8px', borderRadius:6 }}>{s.match_score}%</span>}
                             <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:'0.75rem', color:'var(--neutral-400)' }}><Clock size={11}/>{new Date(s.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</div>
-                            <button onClick={() => { setSavedSession(s); setView('result') }} style={{ display:'flex', alignItems:'center', gap:4, background:'var(--neutral-50)', border:'1px solid var(--neutral-200)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:'0.75rem', color:'var(--neutral-600)', fontWeight:500 }}>View <ArrowRight size={11}/></button>
+                            <button onClick={() => { setSavedSession(s); setLeadSaved(false); setView('result') }} style={{ display:'flex', alignItems:'center', gap:4, background:'var(--neutral-50)', border:'1px solid var(--neutral-200)', borderRadius:6, padding:'4px 10px', cursor:'pointer', fontSize:'0.75rem', color:'var(--neutral-600)', fontWeight:500 }}>View <ArrowRight size={11}/></button>
                             <button onClick={e => deleteSession(s.id, e)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', padding:4, display:'flex', alignItems:'center' }}><Trash2 size={14}/></button>
                           </div>
                         </div>
@@ -429,13 +423,13 @@ export function PKIDiscoveryPage() {
     )
   }
 
-  // RESULT
+  // ── RESULT ────────────────────────────────────────────────────────────────
   if (view === 'result' && savedSession) {
     const s = savedSession; const pm = PM[s.product_routed] || PM.scm_enterprise
     return (
       <div style={{ padding:'1.5rem 2rem', maxWidth:860 }}>
         <button onClick={() => setView('list')} className="btn btn-ghost btn-sm" style={{ display:'flex', alignItems:'center', gap:5, color:'var(--neutral-600)', marginBottom:'1.25rem' }}>← Back to sessions</button>
-        <div style={{ background:'white', border:'1px solid var(--neutral-150)', borderRadius:16, overflow:'hidden', boxShadow:'var(--shadow-sm)' }}>
+        <div style={{ background:'white', border:'1px solid var(--neutral-150)', borderRadius:16, overflow:'hidden', boxShadow:'var(--shadow-sm)', marginBottom:16 }}>
           <div style={{ background:pm.color, padding:'1.5rem 1.75rem' }}>
             <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
               <div>
@@ -469,7 +463,7 @@ export function PKIDiscoveryPage() {
               ))}
             </div>
             <div style={{ fontSize:'0.6875rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--neutral-500)', marginBottom:8, fontWeight:600 }}>Recommended next steps</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
+            <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:20 }}>
               {NEXT_STEPS.map((step,i)=>(
                 <div key={i} style={{ display:'flex', alignItems:'center', gap:10, background:'var(--neutral-50)', border:'1px solid var(--neutral-150)', borderRadius:8, padding:'8px 12px', fontSize:'0.8125rem', color:'var(--neutral-700)' }}>
                   <div style={{ width:20, height:20, borderRadius:'50%', background:pm.color, color:'white', fontSize:'0.6875rem', fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>{i+1}</div>
@@ -477,30 +471,139 @@ export function PKIDiscoveryPage() {
                 </div>
               ))}
             </div>
+
+            {/* Book meeting CTA — prominent if not yet saved */}
+            {!leadSaved && (
+              <div style={{ background:`${pm.color}0d`, border:`1px solid ${pm.color}33`, borderRadius:12, padding:'1rem 1.25rem', marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+                <div>
+                  <div style={{ fontSize:'0.875rem', fontWeight:600, color:pm.color, marginBottom:2 }}>📅 Book a meeting with a PKI consultant</div>
+                  <div style={{ fontSize:'0.75rem', color:'var(--neutral-600)' }}>Collect full customer details, assign an account manager, and schedule the follow-up call.</div>
+                </div>
+                <button onClick={() => setShowExtended(true)} style={{ background:pm.color, color:'white', border:'none', borderRadius:9, padding:'8px 18px', fontWeight:600, fontSize:'0.8125rem', cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' }}>
+                  Book Meeting →
+                </button>
+              </div>
+            )}
+            {leadSaved && (
+              <div style={{ background:'var(--success-50)', border:'1px solid var(--success-100)', borderRadius:12, padding:'0.875rem 1.25rem', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+                <CheckCircle2 size={18} color="var(--success-600)"/>
+                <div>
+                  <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--success-700)' }}>Meeting details saved</div>
+                  <div style={{ fontSize:'0.75rem', color:'var(--success-600)' }}>Visible to the account manager and VP of Sales in the Sales Panel.</div>
+                </div>
+              </div>
+            )}
+
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              <button
-                onClick={() => handlePDF(s)}
-                style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'white', border:'1px solid var(--neutral-200)', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)' }}
-              >
+              <button onClick={() => handlePDF(s)} style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'white', border:'1px solid var(--neutral-200)', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)' }}>
                 <Download size={15}/> Export PDF
               </button>
-              <a
-                href="https://www.linkedin.com/in/mathivanan-k-a90803108/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'#0A66C2', border:'none', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'white', textDecoration:'none' }}
-              >
+              <a href="https://www.linkedin.com/in/mathivanan-k-a90803108/" target="_blank" rel="noopener noreferrer" style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'#0A66C2', border:'none', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'white', textDecoration:'none' }}>
                 <Linkedin size={15}/> Contact PKI Consultant
               </a>
               <button className="btn btn-secondary" style={{ flex:1, minWidth:140 }} onClick={startNew}>New discovery</button>
             </div>
           </div>
         </div>
+
+        {/* Extended lead / booking modal */}
+        {showExtended && (
+          <div style={{ position:'fixed', inset:0, background:'rgba(14,22,36,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16, overflowY:'auto' }}>
+            <div style={{ background:'white', borderRadius:20, padding:'1.75rem', width:'100%', maxWidth:560, boxShadow:'var(--shadow-xl)', margin:'auto' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+                <div>
+                  <div style={{ fontSize:'1rem', fontWeight:600, color:'var(--neutral-800)' }}>📅 Book Meeting & Capture Details</div>
+                  <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)', marginTop:2 }}>This goes to the Sales Panel for AM and VP visibility</div>
+                </div>
+                <button onClick={() => setShowExtended(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', fontSize:20, lineHeight:1 }}>×</button>
+              </div>
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                {[
+                  {label:'First name',key:'first_name',placeholder:'Jane',span:1},
+                  {label:'Last name',key:'last_name',placeholder:'Smith',span:1},
+                ].map(f => (
+                  <div key={f.key} className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">{f.label}</label>
+                    <input className="input" placeholder={f.placeholder} value={extLead[f.key]} onChange={e=>setExtLead(p=>({...p,[f.key]:e.target.value}))} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                <div className="form-group" style={{ margin:0 }}>
+                  <label className="form-label">Email address</label>
+                  <input className="input" type="email" placeholder="jane@acme.com" value={extLead.email} onChange={e=>setExtLead(p=>({...p,email:e.target.value}))} />
+                </div>
+                <div className="form-group" style={{ margin:0 }}>
+                  <label className="form-label">Company name</label>
+                  <input className="input" placeholder="Acme Corporation" value={extLead.company_name} onChange={e=>setExtLead(p=>({...p,company_name:e.target.value}))} />
+                </div>
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <div className="form-group" style={{ margin:0 }}>
+                  <label className="form-label">Country</label>
+                  <select className="input" value={extLead.country} onChange={e=>setExtLead(p=>({...p,country:e.target.value}))} style={{ cursor:'pointer' }}>
+                    <option value="">Select country…</option>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginBottom:12 }}>
+                <div className="form-group" style={{ margin:0 }}>
+                  <label className="form-label">Assign account manager</label>
+                  <select className="input" value={extLead.account_manager_id} onChange={e=>setExtLead(p=>({...p,account_manager_id:e.target.value}))} style={{ cursor:'pointer' }}>
+                    <option value="">Unassigned</option>
+                    {accountManagers.map(am => (
+                      <option key={am.user_id} value={am.user_id}>
+                        {am.profiles?.full_name || am.user_id} ({am.role === 'vp_sales' ? 'VP Sales' : 'Account Manager'})
+                      </option>
+                    ))}
+                  </select>
+                  {accountManagers.length === 0 && (
+                    <p style={{ fontSize:'0.75rem', color:'var(--neutral-400)', marginTop:4 }}>No account managers assigned yet — go to Sales Panel to add roles.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Calendar */}
+              <div style={{ background:'var(--neutral-50)', border:'1px solid var(--neutral-150)', borderRadius:12, padding:'1rem', marginBottom:16 }}>
+                <div style={{ fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)', marginBottom:10 }}>📆 Schedule meeting</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Date</label>
+                    <input className="input" type="date" min={new Date().toISOString().split('T')[0]} value={extLead.meeting_date} onChange={e=>setExtLead(p=>({...p,meeting_date:e.target.value}))} />
+                  </div>
+                  <div className="form-group" style={{ margin:0 }}>
+                    <label className="form-label">Time (your timezone)</label>
+                    <select className="input" value={extLead.meeting_time} onChange={e=>setExtLead(p=>({...p,meeting_time:e.target.value}))} style={{ cursor:'pointer' }}>
+                      <option value="">Select time…</option>
+                      {['09:00','09:30','10:00','10:30','11:00','11:30','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'].map(t=>(
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', gap:10 }}>
+                <button className="btn btn-secondary" onClick={() => setShowExtended(false)} style={{ flex:1 }}>Cancel</button>
+                <button
+                  className={`btn btn-primary ${savingExt?'btn-loading':''}`}
+                  onClick={handleExtSave}
+                  disabled={savingExt || !extLead.first_name||!extLead.last_name||!extLead.email||!extLead.company_name||!extLead.country}
+                  style={{ flex:2, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}
+                >
+                  {savingExt ? '' : <><CheckCircle2 size={15}/> Save &amp; Add to Sales Pipeline</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
 
-  // WIZARD
+  // ── WIZARD ────────────────────────────────────────────────────────────────
   if (view === 'wizard') {
     const currentQ = phase === 'triage' ? currentTriageQ : currentDeepQ
     const qNum = phase === 'triage' ? triageIndex + 1 : deepIndex + 1
