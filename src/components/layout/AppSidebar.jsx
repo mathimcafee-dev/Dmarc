@@ -23,6 +23,7 @@ const navSections = [
     label: 'PKI Discovery',
     items: [
       { to: '/pki-discovery', icon: <Cpu size={16} />, label: 'Sectigo Discovery' },
+      { to: '/sales-panel',   icon: <BarChart2 size={16} />, label: 'Sales Panel' },
     ],
   },
   {
