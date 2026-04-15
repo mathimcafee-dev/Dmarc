@@ -252,12 +252,32 @@ export function PKIDiscoveryPage() {
   }
 
   async function loadAMs() {
-    const { data } = await supabase
+    const { data: amsRaw } = await supabase
       .from('pki_sales_roles')
-      .select('user_id, role, profiles(full_name, id)')
+      .select('user_id, role')
       .eq('org_id', currentOrg.id)
       .eq('role', 'account_manager')
-    setAccountManagers(data || [])
+    if (!amsRaw?.length) { setAccountManagers([]); return }
+
+    // Get display info: join org_members -> profiles + org_invitations for email
+    const { data: members } = await supabase
+      .from('org_members')
+      .select('user_id, profiles(full_name), org_invitations(email)')
+      .eq('org_id', currentOrg.id)
+      .in('user_id', amsRaw.map(a => a.user_id))
+
+    const enriched = amsRaw.map(am => {
+      const m = members?.find(x => x.user_id === am.user_id) || {}
+      const fullName = m.profiles?.full_name
+      const email = Array.isArray(m.org_invitations)
+        ? m.org_invitations[0]?.email
+        : m.org_invitations?.email
+      return {
+        ...am,
+        display_name: fullName || email || am.user_id.slice(0,8) + '…',
+      }
+    })
+    setAccountManagers(enriched)
   }
 
   useEffect(() => {
@@ -555,7 +575,7 @@ export function PKIDiscoveryPage() {
                     <option value="">Unassigned</option>
                     {accountManagers.map(am => (
                       <option key={am.user_id} value={am.user_id}>
-                        {am.profiles?.full_name || am.user_id}
+                        {am.display_name}
                       </option>
                     ))}
                   </select>
