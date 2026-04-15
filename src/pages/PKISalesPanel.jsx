@@ -130,6 +130,12 @@ export function PKISalesPanel() {
     setUpdating(null); await loadAll()
   }
 
+  async function deleteLead(leadId) {
+    if (!confirm('Delete this lead permanently?')) return
+    await supabase.from('pki_leads').delete().eq('id', leadId)
+    await loadAll()
+  }
+
   async function saveNotes() {
     if (!editLead) return
     setSavingNotes(true)
@@ -234,8 +240,8 @@ export function PKISalesPanel() {
           <div style={{background:'white',border:'1px solid var(--neutral-150)',borderRadius:14,overflow:'auto',boxShadow:'var(--shadow-xs)'}}>
             <table style={{width:'100%',borderCollapse:'collapse',minWidth:700}}>
               <thead><tr style={{background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-150)'}}>
-                {['Customer','Company','Country','Product','Meeting','Status',...(isVP?['Account Manager']:[]),'Notes'].map(h=>(
-                  <th key={h} style={{padding:'10px 12px',textAlign:'left',fontSize:'0.6875rem',textTransform:'uppercase',letterSpacing:'0.07em',color:'var(--neutral-500)',fontWeight:600,whiteSpace:'nowrap'}}>{h}</th>
+                {['Customer','Company','Country','Product','Meeting','Status',...(isVP?['Account Manager','']:[]),...(isAM?['Notes']:[])].map((h,i)=>(
+                  <th key={i} style={{padding:'10px 12px',textAlign:'left',fontSize:'0.6875rem',textTransform:'uppercase',letterSpacing:'0.07em',color:'var(--neutral-500)',fontWeight:600,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr></thead>
               <tbody>
@@ -262,22 +268,39 @@ export function PKISalesPanel() {
                         </div>
                       ):<span style={{fontSize:'0.75rem',color:'var(--neutral-400)'}}>Not scheduled</span>}
                     </td>
+                    {/* Status — AM can change, VP sees badge only */}
                     <td style={{padding:'11px 12px'}}>
-                      <div style={{position:'relative',display:'inline-block'}}>
-                        <select value={lead.status} onChange={e=>updateStatus(lead.id,e.target.value)} disabled={updating===lead.id}
-                          style={{appearance:'none',WebkitAppearance:'none',padding:'5px 26px 5px 10px',fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,cursor:'pointer',outline:'none'}}>
-                          {Object.entries(STATUS).map(([val,meta])=><option key={val} value={val}>{meta.label}</option>)}
-                        </select>
-                        <ChevronDown size={10} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',color:st.color,pointerEvents:'none'}}/>
-                      </div>
+                      {isAM ? (
+                        <div style={{position:'relative',display:'inline-block'}}>
+                          <select value={lead.status} onChange={e=>updateStatus(lead.id,e.target.value)} disabled={updating===lead.id}
+                            style={{appearance:'none',WebkitAppearance:'none',padding:'5px 26px 5px 10px',fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,cursor:'pointer',outline:'none'}}>
+                            {Object.entries(STATUS).map(([val,meta])=><option key={val} value={val}>{meta.label}</option>)}
+                          </select>
+                          <ChevronDown size={10} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',color:st.color,pointerEvents:'none'}}/>
+                        </div>
+                      ) : (
+                        <span style={{fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,padding:'4px 10px',whiteSpace:'nowrap'}}>{st.label}</span>
+                      )}
                     </td>
+                    {/* VP: AM name + Delete */}
                     {isVP&&<td style={{padding:'11px 12px',fontSize:'0.8125rem',color:lead.am_name?'var(--neutral-700)':'var(--neutral-400)'}}>{lead.am_name||'Unassigned'}</td>}
-                    <td style={{padding:'11px 12px'}}>
-                      <button onClick={()=>{setEditLead(lead);setEditNotes(lead.meeting_notes||'')}}
-                        style={{background:lead.meeting_notes?'#EFF6FF':'var(--neutral-50)',border:`1px solid ${lead.meeting_notes?'#BFDBFE':'var(--neutral-200)'}`,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:'0.75rem',color:lead.meeting_notes?'#1E40AF':'var(--neutral-500)',fontWeight:500,whiteSpace:'nowrap'}}>
-                        {lead.meeting_notes?'📝 Edit':'+ Notes'}
-                      </button>
-                    </td>
+                    {isVP&&(
+                      <td style={{padding:'11px 12px'}}>
+                        <button onClick={()=>deleteLead(lead.id)}
+                          style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:'0.75rem',color:'#DC2626',fontWeight:500,whiteSpace:'nowrap'}}>
+                          🗑 Delete
+                        </button>
+                      </td>
+                    )}
+                    {/* AM: Notes */}
+                    {isAM&&(
+                      <td style={{padding:'11px 12px'}}>
+                        <button onClick={()=>{setEditLead(lead);setEditNotes(lead.meeting_notes||'')}}
+                          style={{background:lead.meeting_notes?'#EFF6FF':'var(--neutral-50)',border:`1px solid ${lead.meeting_notes?'#BFDBFE':'var(--neutral-200)'}`,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:'0.75rem',color:lead.meeting_notes?'#1E40AF':'var(--neutral-500)',fontWeight:500,whiteSpace:'nowrap'}}>
+                          {lead.meeting_notes?'📝 Edit':'+ Notes'}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 )})}
               </tbody>
@@ -326,12 +349,18 @@ export function PKISalesPanel() {
                       {isVP&&lead.am_name&&<span style={{fontSize:'0.75rem',color:'var(--neutral-500)'}}>AM: {lead.am_name}</span>}
                     </div>
                   </div>
-                  <div style={{position:'relative',flexShrink:0}}>
-                    <select value={lead.status} onChange={e=>updateStatus(lead.id,e.target.value)}
-                      style={{appearance:'none',WebkitAppearance:'none',padding:'6px 26px 6px 10px',fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,cursor:'pointer',outline:'none'}}>
-                      {Object.entries(STATUS).map(([val,meta])=><option key={val} value={val}>{meta.label}</option>)}
-                    </select>
-                    <ChevronDown size={10} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',color:st.color,pointerEvents:'none'}}/>
+                  <div style={{flexShrink:0}}>
+                    {isAM ? (
+                      <div style={{position:'relative'}}>
+                        <select value={lead.status} onChange={e=>updateStatus(lead.id,e.target.value)}
+                          style={{appearance:'none',WebkitAppearance:'none',padding:'6px 26px 6px 10px',fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,cursor:'pointer',outline:'none'}}>
+                          {Object.entries(STATUS).map(([val,meta])=><option key={val} value={val}>{meta.label}</option>)}
+                        </select>
+                        <ChevronDown size={10} style={{position:'absolute',right:7,top:'50%',transform:'translateY(-50%)',color:st.color,pointerEvents:'none'}}/>
+                      </div>
+                    ) : (
+                      <span style={{fontSize:'0.75rem',fontWeight:600,color:st.color,background:st.bg,border:`1px solid ${st.border}`,borderRadius:8,padding:'5px 12px',whiteSpace:'nowrap'}}>{st.label}</span>
+                    )}
                   </div>
                 </div>
               )})}
