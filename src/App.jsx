@@ -26,6 +26,7 @@ import { BlacklistPage } from './pages/BlacklistPage'
 import { EmailHeaderPage } from './pages/EmailHeaderPage'
 import { AcceptInvitePage } from './pages/AcceptInvitePage'
 import { PKIDiscoveryPage } from './pages/PKIDiscoveryPage'
+import { PKISalesPanel } from './pages/PKISalesPanel'
 import './index.css'
 
 function Spinner() {
@@ -110,6 +111,7 @@ export default function App() {
               <Route path="/blacklist"      element={<BlacklistPage />} />
               <Route path="/email-headers"  element={<EmailHeaderPage />} />
               <Route path="/pki-discovery"  element={<PKIDiscoveryPage />} />
+              <Route path="/sales-panel"     element={<PKISalesPanel />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
