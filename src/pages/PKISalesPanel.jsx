@@ -21,80 +21,141 @@ const STATUS = {
   quote_process: { label:'Quote Process', color:'#5B21B6', bg:'#F5F3FF', border:'#DDD6FE' },
 }
 
+// Helper: display name from member object (full_name if set, else email prefix, else user_id short)
+function displayName(m) {
+  if (m?.full_name) return m.full_name
+  if (m?.email) return m.email
+  if (m?.user_id) return m.user_id.slice(0, 8) + '…'
+  return 'Unknown'
+}
+function initials(name) {
+  if (!name) return '?'
+  const parts = name.split(/[\s@]/)
+  return parts.filter(Boolean).map(p => p[0]).slice(0,2).join('').toUpperCase()
+}
+
 export function PKISalesPanel() {
   const { currentOrg } = useOrg()
   const { user } = useAuth()
   const [tab, setTab] = useState('pipeline')
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
-  const [accountManagers, setAccountManagers] = useState([])   // rows from pki_sales_roles WHERE role='account_manager'
-  const [orgMembers, setOrgMembers] = useState([])             // all accepted org_members (for add-AM dropdown)
-  const [orgRole, setOrgRole] = useState(null)                 // my org_members.role
+  // accountManagers: pki_sales_roles rows with extra display info
+  const [accountManagers, setAccountManagers] = useState([])
+  // orgMembers: all accepted members with email+name for the picker
+  const [orgMembers, setOrgMembers] = useState([])
+  const [orgRole, setOrgRole] = useState(null)
+  const [isAM, setIsAM] = useState(false)
   const [updating, setUpdating] = useState(null)
   const [showAddAM, setShowAddAM] = useState(false)
   const [addAMUserId, setAddAMUserId] = useState('')
   const [savingAM, setSavingAM] = useState(false)
-  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}` })
+  const [calMonth, setCalMonth] = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+  })
   const [editLead, setEditLead] = useState(null)
   const [editNotes, setEditNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
 
-  // ROLE RESOLUTION — purely based on org role, no pki_sales_roles lookup needed for VP
-  // Owner/admin = VP Sales (full access). account_manager in pki_sales_roles = AM access.
-  const isVP = ['owner', 'admin'].includes(orgRole)
-
-  // AM: has a row in pki_sales_roles with role=account_manager, and is NOT an owner/admin
-  const [isAM, setIsAM] = useState(false)
+  const isVP = ['owner','admin'].includes(orgRole)
+  const hasAccess = isVP || isAM
 
   useEffect(() => { if (currentOrg?.id && user?.id) loadAll() }, [currentOrg?.id, user?.id])
 
   async function loadAll() {
     setLoading(true)
-    const [leadsRes, amsRes, membersRes, myMemberRes] = await Promise.all([
-      supabase.from('pki_leads')
-        .select('*, am:profiles!pki_leads_account_manager_id_fkey(full_name)')
-        .eq('org_id', currentOrg.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('pki_sales_roles')
-        .select('*, profiles(full_name, id)')
-        .eq('org_id', currentOrg.id)
-        .eq('role', 'account_manager'),
-      supabase.from('org_members')
-        .select('user_id, role, profiles(full_name, id)')
-        .eq('org_id', currentOrg.id)
-        .not('accepted_at', 'is', null),
-      supabase.from('org_members')
+    try {
+      // 1. My org role
+      const { data: myMember } = await supabase
+        .from('org_members')
         .select('role')
         .eq('org_id', currentOrg.id)
         .eq('user_id', user.id)
-        .single(),
-    ])
+        .single()
+      const myOrgRole = myMember?.role || null
+      setOrgRole(myOrgRole)
 
-    const myOrgRole = myMemberRes.data?.role || null
-    setOrgRole(myOrgRole)
-    setLeads(leadsRes.data || [])
-    setAccountManagers(amsRes.data || [])
-    setOrgMembers(membersRes.data || [])
+      // 2. All accepted org members — join invitations to get email
+      //    org_invitations has email, org_members has user_id
+      //    We join through: org_members -> org_invitations (same org_id + accepted)
+      //    Plus profiles for full_name
+      const { data: members } = await supabase
+        .from('org_members')
+        .select(`
+          user_id,
+          role,
+          profiles ( full_name ),
+          org_invitations ( email )
+        `)
+        .eq('org_id', currentOrg.id)
+        .not('accepted_at', 'is', null)
 
-    // AM = has pki_sales_roles entry AND is not owner/admin
-    const amEntry = amsRes.data?.find(r => r.user_id === user.id)
-    setIsAM(!!amEntry && !['owner','admin'].includes(myOrgRole))
+      // Flatten: pick best display name
+      const flatMembers = (members || []).map(m => ({
+        user_id: m.user_id,
+        role: m.role,
+        full_name: m.profiles?.full_name || null,
+        email: Array.isArray(m.org_invitations)
+          ? m.org_invitations[0]?.email || null
+          : m.org_invitations?.email || null,
+      }))
+      setOrgMembers(flatMembers)
+
+      // 3. pki_sales_roles (AMs only)
+      const { data: amsRaw } = await supabase
+        .from('pki_sales_roles')
+        .select('id, user_id, role')
+        .eq('org_id', currentOrg.id)
+        .eq('role', 'account_manager')
+
+      // Enrich AMs with display info from flatMembers
+      const ams = (amsRaw || []).map(am => {
+        const member = flatMembers.find(m => m.user_id === am.user_id) || {}
+        return { ...am, full_name: member.full_name, email: member.email }
+      })
+      setAccountManagers(ams)
+
+      // 4. Am I an AM?
+      const amEntry = ams.find(a => a.user_id === user.id)
+      setIsAM(!!amEntry && !['owner','admin'].includes(myOrgRole))
+
+      // 5. Leads
+      const { data: leadsData } = await supabase
+        .from('pki_leads')
+        .select('*')
+        .eq('org_id', currentOrg.id)
+        .order('created_at', { ascending: false })
+
+      // Enrich leads with AM display name
+      const enrichedLeads = (leadsData || []).map(lead => {
+        const am = ams.find(a => a.user_id === lead.account_manager_id)
+        return { ...lead, am_name: am ? displayName(am) : null }
+      })
+      setLeads(enrichedLeads)
+
+    } catch(e) {
+      console.error('PKISalesPanel loadAll error:', e)
+    }
     setLoading(false)
   }
 
-  // What this user can see
-  const hasAccess = isVP || isAM
   const visibleLeads = isVP ? leads : leads.filter(l => l.account_manager_id === user.id)
-
   const stats = {
     total: visibleLeads.length,
-    pending: visibleLeads.filter(l => l.status === 'pending').length,
-    scheduled: visibleLeads.filter(l => l.status === 'scheduled').length,
-    completed: visibleLeads.filter(l => l.status === 'completed').length,
-    quote: visibleLeads.filter(l => l.status === 'quote_process').length,
+    pending: visibleLeads.filter(l => l.status==='pending').length,
+    scheduled: visibleLeads.filter(l => l.status==='scheduled').length,
+    completed: visibleLeads.filter(l => l.status==='completed').length,
+    quote: visibleLeads.filter(l => l.status==='quote_process').length,
   }
-  const byProduct = visibleLeads.reduce((acc, l) => { acc[l.product_routed] = (acc[l.product_routed]||0)+1; return acc }, {})
+  const byProduct = visibleLeads.reduce((acc,l) => { acc[l.product_routed]=(acc[l.product_routed]||0)+1; return acc }, {})
   const calLeads = visibleLeads.filter(l => l.meeting_date?.startsWith(calMonth))
+
+  // Members who can be added as AM: not owner/admin, not already an AM
+  const eligibleForAM = orgMembers.filter(m =>
+    !['owner','admin'].includes(m.role) &&
+    !accountManagers.find(am => am.user_id === m.user_id)
+  )
 
   async function updateStatus(leadId, status) {
     setUpdating(leadId)
@@ -123,16 +184,10 @@ export function PKISalesPanel() {
   }
 
   async function removeAM(userId) {
-    if (!confirm('Remove this account manager? They will lose access to the Sales Panel.')) return
+    if (!confirm('Remove this account manager?')) return
     await supabase.from('pki_sales_roles').delete().eq('org_id', currentOrg.id).eq('user_id', userId)
     await loadAll()
   }
-
-  // Members eligible to become AM (not already an AM, not owner/admin)
-  const eligibleForAM = orgMembers.filter(m =>
-    !['owner','admin'].includes(m.role) &&
-    !accountManagers.find(am => am.user_id === m.user_id)
-  )
 
   // ── LOADING ───────────────────────────────────────────────────────────────
   if (loading) return (
@@ -148,7 +203,7 @@ export function PKISalesPanel() {
         <div style={{ fontSize:48, marginBottom:12 }}>🔒</div>
         <h2 style={{ fontSize:'1.125rem', fontWeight:600, color:'var(--neutral-800)', marginBottom:8 }}>Sales Panel Access Required</h2>
         <p style={{ fontSize:'0.875rem', color:'var(--neutral-500)', lineHeight:1.6, margin:0 }}>
-          You need to be assigned as an Account Manager to access this panel.<br/>
+          You need to be assigned as an Account Manager.<br/>
           Contact the VP of Sales to get access.
         </p>
       </div>
@@ -189,7 +244,8 @@ export function PKISalesPanel() {
           { id:'calendar', label:'Calendar', icon:<Calendar size={14}/> },
           ...(isVP ? [{ id:'team', label:'Account Managers', icon:<Users size={14}/> }] : []),
         ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', background: tab===t.id ? 'white' : 'transparent', border:'none', borderRadius:8, cursor:'pointer', fontSize:'0.8125rem', fontWeight: tab===t.id ? 600 : 400, color: tab===t.id ? 'var(--neutral-800)' : 'var(--neutral-500)', boxShadow: tab===t.id ? 'var(--shadow-xs)' : 'none', transition:'all 0.12s' }}>
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 14px', background: tab===t.id?'white':'transparent', border:'none', borderRadius:8, cursor:'pointer', fontSize:'0.8125rem', fontWeight: tab===t.id?600:400, color: tab===t.id?'var(--neutral-800)':'var(--neutral-500)', boxShadow: tab===t.id?'var(--shadow-xs)':'none', transition:'all 0.12s' }}>
             {t.icon} {t.label}
             {t.id==='pipeline' && stats.pending>0 && <span style={{ background:'#EF4444', color:'white', borderRadius:20, fontSize:10, fontWeight:700, padding:'1px 6px', marginLeft:2 }}>{stats.pending}</span>}
           </button>
@@ -197,8 +253,7 @@ export function PKISalesPanel() {
       </div>
 
       {/* ── PIPELINE ─────────────────────────────────────────────────────── */}
-      {tab === 'pipeline' && (<>
-        {/* Stats */}
+      {tab==='pipeline' && (<>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:10, marginBottom:20 }}>
           {[
             { label:'Total Leads',   val:stats.total,     color:'var(--neutral-700)', bg:'white',                    border:'var(--neutral-150)' },
@@ -214,7 +269,6 @@ export function PKISalesPanel() {
           ))}
         </div>
 
-        {/* Product breakdown (VP only) */}
         {isVP && Object.keys(byProduct).length > 0 && (
           <div style={{ background:'white', border:'1px solid var(--neutral-150)', borderRadius:14, padding:'1rem 1.25rem', marginBottom:16 }}>
             <div style={{ fontSize:'0.6875rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'var(--neutral-500)', marginBottom:10, fontWeight:600 }}>Pipeline by product</div>
@@ -235,13 +289,12 @@ export function PKISalesPanel() {
           </div>
         )}
 
-        {/* Leads table */}
         {visibleLeads.length === 0 ? (
           <div style={{ textAlign:'center', padding:'3rem 2rem', background:'white', border:'1px dashed var(--neutral-200)', borderRadius:14 }}>
             <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
             <h3 style={{ fontSize:'1rem', fontWeight:600, color:'var(--neutral-700)', marginBottom:6 }}>No leads yet</h3>
             <p style={{ fontSize:'0.875rem', color:'var(--neutral-500)', margin:0 }}>
-              {isVP ? 'Run a discovery session, book a meeting, and it will appear here.' : 'No leads have been assigned to you yet. Contact your VP of Sales.'}
+              {isVP ? 'Run a discovery session, book a meeting, and it will appear here.' : 'No leads assigned to you yet.'}
             </p>
           </div>
         ) : (
@@ -249,13 +302,13 @@ export function PKISalesPanel() {
             <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
               <thead>
                 <tr style={{ background:'var(--neutral-50)', borderBottom:'1px solid var(--neutral-150)' }}>
-                  {['Customer','Company','Country','Product','Meeting','Status', ...(isVP?['Account Manager']:[]), 'Notes'].map(h => (
+                  {['Customer','Company','Country','Product','Meeting','Status',...(isVP?['Account Manager']:[]),'Notes'].map(h=>(
                     <th key={h} style={{ padding:'10px 12px', textAlign:'left', fontSize:'0.6875rem', textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--neutral-500)', fontWeight:600, whiteSpace:'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {visibleLeads.map((lead, i) => {
+                {visibleLeads.map((lead,i) => {
                   const pm = PM[lead.product_routed] || PM.scm_enterprise
                   const st = STATUS[lead.status] || STATUS.pending
                   return (
@@ -290,8 +343,8 @@ export function PKISalesPanel() {
                         </div>
                       </td>
                       {isVP && (
-                        <td style={{ padding:'11px 12px', fontSize:'0.8125rem', color: lead.am?.full_name ? 'var(--neutral-700)' : 'var(--neutral-400)' }}>
-                          {lead.am?.full_name || 'Unassigned'}
+                        <td style={{ padding:'11px 12px', fontSize:'0.8125rem', color: lead.am_name?'var(--neutral-700)':'var(--neutral-400)' }}>
+                          {lead.am_name || 'Unassigned'}
                         </td>
                       )}
                       <td style={{ padding:'11px 12px' }}>
@@ -310,7 +363,7 @@ export function PKISalesPanel() {
       </>)}
 
       {/* ── CALENDAR ─────────────────────────────────────────────────────── */}
-      {tab === 'calendar' && (
+      {tab==='calendar' && (
         <div>
           <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20, flexWrap:'wrap' }}>
             <button onClick={() => { const [y,m]=calMonth.split('-').map(Number); const d=new Date(y,m-2,1); setCalMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`) }}
@@ -355,7 +408,7 @@ export function PKISalesPanel() {
                           <span style={{ fontSize:'0.6875rem', fontWeight:600, color:pm.color }}>{pm.label}</span>
                         </div>
                         {lead.meeting_time && <div style={{ display:'flex', alignItems:'center', gap:4, fontSize:'0.8125rem', color:'var(--neutral-500)', fontWeight:500 }}><Clock size={13}/>{lead.meeting_time}</div>}
-                        {isVP && lead.am?.full_name && <span style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>AM: {lead.am.full_name}</span>}
+                        {isVP && lead.am_name && <span style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>AM: {lead.am_name}</span>}
                         {lead.meeting_notes && <span style={{ fontSize:'0.75rem', color:'#1E40AF', background:'#EFF6FF', borderRadius:6, padding:'1px 7px' }}>📝 Notes</span>}
                       </div>
                     </div>
@@ -375,14 +428,13 @@ export function PKISalesPanel() {
       )}
 
       {/* ── ACCOUNT MANAGERS TAB (VP only) ───────────────────────────────── */}
-      {tab === 'team' && isVP && (
+      {tab==='team' && isVP && (
         <div style={{ display:'grid', gridTemplateColumns:'minmax(300px,1fr) minmax(300px,1fr)', gap:16, alignItems:'start' }}>
-          {/* Roster */}
           <div style={{ background:'white', border:'1px solid var(--neutral-150)', borderRadius:14, overflow:'hidden', boxShadow:'var(--shadow-xs)' }}>
             <div style={{ padding:'0.875rem 1.25rem', borderBottom:'1px solid var(--neutral-100)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <div>
                 <div style={{ fontSize:'0.9375rem', fontWeight:600, color:'var(--neutral-800)' }}>Account Managers</div>
-                <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)', marginTop:2 }}>These users appear in the meeting booking dropdown</div>
+                <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)', marginTop:2 }}>Appear in the meeting booking dropdown</div>
               </div>
               <button onClick={() => setShowAddAM(true)} style={{ display:'flex', alignItems:'center', gap:5, background:'var(--brand-500)', color:'white', border:'none', borderRadius:8, padding:'6px 12px', cursor:'pointer', fontSize:'0.75rem', fontWeight:600 }}>
                 <UserPlus size={13}/> Add AM
@@ -394,48 +446,47 @@ export function PKISalesPanel() {
                 <p style={{ color:'var(--neutral-500)', fontSize:'0.875rem', marginBottom:16 }}>No account managers yet.</p>
                 <button onClick={() => setShowAddAM(true)} style={{ background:'var(--brand-500)', color:'white', border:'none', borderRadius:9, padding:'8px 18px', fontSize:'0.8125rem', fontWeight:600, cursor:'pointer' }}>Add first AM</button>
               </div>
-            ) : accountManagers.map((am, i) => {
+            ) : accountManagers.map((am,i) => {
               const amLeads = leads.filter(l => l.account_manager_id === am.user_id)
+              const name = displayName(am)
               return (
                 <div key={am.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.875rem 1.25rem', borderTop: i>0?'1px solid var(--neutral-100)':'none', gap:10 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
                     <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#0D6E56,#1A4FBA)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.9375rem', fontWeight:700, color:'white', flexShrink:0 }}>
-                      {(am.profiles?.full_name||'?').charAt(0).toUpperCase()}
+                      {initials(name)}
                     </div>
                     <div style={{ minWidth:0 }}>
-                      <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--neutral-800)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{am.profiles?.full_name || 'Unknown'}</div>
+                      <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--neutral-800)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
                       <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>{amLeads.length} lead{amLeads.length!==1?'s':''} assigned</div>
                     </div>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
                     <span style={{ fontSize:'0.6875rem', fontWeight:700, color:'#1E40AF', background:'#EFF6FF', border:'1px solid #BFDBFE', borderRadius:6, padding:'3px 8px' }}>Account Manager</span>
-                    <button onClick={() => removeAM(am.user_id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', padding:3, display:'flex', alignItems:'center' }} title="Remove AM">
-                      <X size={15}/>
-                    </button>
+                    <button onClick={() => removeAM(am.user_id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', padding:3, display:'flex', alignItems:'center' }}><X size={15}/></button>
                   </div>
                 </div>
               )
             })}
           </div>
 
-          {/* AM Performance */}
           <div style={{ background:'white', border:'1px solid var(--neutral-150)', borderRadius:14, overflow:'hidden', boxShadow:'var(--shadow-xs)' }}>
             <div style={{ padding:'0.875rem 1.25rem', borderBottom:'1px solid var(--neutral-100)', fontSize:'0.9375rem', fontWeight:600, color:'var(--neutral-800)' }}>AM Performance</div>
             {accountManagers.length === 0 ? (
               <div style={{ padding:'2rem', textAlign:'center', color:'var(--neutral-400)', fontSize:'0.875rem' }}>Add account managers to see their performance.</div>
-            ) : accountManagers.map((am, i) => {
+            ) : accountManagers.map((am,i) => {
               const amLeads = leads.filter(l => l.account_manager_id === am.user_id)
               const completed = amLeads.filter(l => l.status==='completed').length
               const active = amLeads.filter(l => ['scheduled','quote_process'].includes(l.status)).length
               const pct = amLeads.length > 0 ? Math.round((completed/amLeads.length)*100) : 0
+              const name = displayName(am)
               return (
                 <div key={am.id} style={{ padding:'1rem 1.25rem', borderTop: i>0?'1px solid var(--neutral-100)':'none' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                       <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#0D6E56,#1A4FBA)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.75rem', fontWeight:700, color:'white' }}>
-                        {(am.profiles?.full_name||'?').charAt(0).toUpperCase()}
+                        {initials(name)}
                       </div>
-                      <span style={{ fontSize:'0.875rem', fontWeight:500, color:'var(--neutral-800)' }}>{am.profiles?.full_name || 'Unknown'}</span>
+                      <span style={{ fontSize:'0.875rem', fontWeight:500, color:'var(--neutral-800)' }}>{name}</span>
                     </div>
                     <span style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>{completed}/{amLeads.length} completed</span>
                   </div>
@@ -445,9 +496,9 @@ export function PKISalesPanel() {
                   <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                     {[
                       { label:`${amLeads.filter(l=>l.status==='pending').length} pending`, color:'#92400E', bg:'#FFFBEB' },
-                      { label:`${active} active`,    color:'#1E40AF', bg:'#EFF6FF' },
+                      { label:`${active} active`, color:'#1E40AF', bg:'#EFF6FF' },
                       { label:`${pct}% close rate`, color:'#166534', bg:'#F0FDF4' },
-                    ].map(chip => (
+                    ].map(chip=>(
                       <span key={chip.label} style={{ fontSize:'0.6875rem', fontWeight:600, color:chip.color, background:chip.bg, borderRadius:6, padding:'2px 8px' }}>{chip.label}</span>
                     ))}
                   </div>
@@ -461,38 +512,45 @@ export function PKISalesPanel() {
       {/* ── ADD AM MODAL ──────────────────────────────────────────────────── */}
       {showAddAM && (
         <div style={{ position:'fixed', inset:0, background:'rgba(14,22,36,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16 }}>
-          <div style={{ background:'white', borderRadius:20, padding:'1.75rem', width:'100%', maxWidth:420, boxShadow:'var(--shadow-xl)' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-              <div>
-                <div style={{ fontSize:'1rem', fontWeight:600, color:'var(--neutral-800)' }}>Add Account Manager</div>
-                <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)', marginTop:2 }}>They will appear in the meeting booking dropdown and see their assigned leads in this panel.</div>
-              </div>
+          <div style={{ background:'white', borderRadius:20, padding:'1.75rem', width:'100%', maxWidth:440, boxShadow:'var(--shadow-xl)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+              <div style={{ fontSize:'1rem', fontWeight:600, color:'var(--neutral-800)' }}>Add Account Manager</div>
               <button onClick={() => { setShowAddAM(false); setAddAMUserId('') }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', fontSize:22, lineHeight:1, marginLeft:12 }}>×</button>
             </div>
-            <div className="form-group" style={{ margin:'0 0 16px' }}>
-              <label className="form-label">Select organisation member</label>
-              {eligibleForAM.length === 0 ? (
-                <div style={{ background:'var(--neutral-50)', border:'1px solid var(--neutral-200)', borderRadius:10, padding:'12px 14px', fontSize:'0.875rem', color:'var(--neutral-500)' }}>
-                  No eligible members found. Invite members to your organisation first via the Members page.
+            <p style={{ fontSize:'0.8125rem', color:'var(--neutral-500)', marginBottom:16, lineHeight:1.5 }}>
+              Selected member will appear in the meeting booking dropdown and can log in to see their assigned leads.
+            </p>
+
+            {eligibleForAM.length === 0 ? (
+              <div style={{ background:'var(--neutral-50)', border:'1px solid var(--neutral-200)', borderRadius:12, padding:'1.25rem', textAlign:'center', marginBottom:16 }}>
+                <div style={{ fontSize:28, marginBottom:8 }}>👥</div>
+                <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--neutral-700)', marginBottom:4 }}>No eligible members found</div>
+                <div style={{ fontSize:'0.8125rem', color:'var(--neutral-500)', lineHeight:1.5 }}>
+                  Invite members to your organisation from the <strong>Members</strong> page (sidebar → Management → Members). Once they accept the invite, they'll appear here.
                 </div>
-              ) : (
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  {eligibleForAM.map(m => (
+              </div>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16, maxHeight:280, overflowY:'auto' }}>
+                {eligibleForAM.map(m => {
+                  const name = displayName(m)
+                  const isSel = addAMUserId === m.user_id
+                  return (
                     <button key={m.user_id} onClick={() => setAddAMUserId(m.user_id)}
-                      style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background: addAMUserId===m.user_id ? '#EFF6FF' : 'var(--neutral-50)', border:`2px solid ${addAMUserId===m.user_id ? '#3B82F6' : 'var(--neutral-200)'}`, borderRadius:10, cursor:'pointer', textAlign:'left' }}>
-                      <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,var(--brand-600),var(--brand-400))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.875rem', fontWeight:700, color:'white', flexShrink:0 }}>
-                        {(m.profiles?.full_name||'?').charAt(0).toUpperCase()}
+                      style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', background: isSel?'#EFF6FF':'var(--neutral-50)', border:`2px solid ${isSel?'#3B82F6':'var(--neutral-200)'}`, borderRadius:10, cursor:'pointer', textAlign:'left', transition:'all 0.1s' }}>
+                      <div style={{ width:38, height:38, borderRadius:'50%', background:`linear-gradient(135deg,${isSel?'#1D4ED8,#3B82F6':'#475569,#64748B'})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.9375rem', fontWeight:700, color:'white', flexShrink:0 }}>
+                        {initials(name)}
                       </div>
-                      <div>
-                        <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--neutral-800)' }}>{m.profiles?.full_name || 'Unknown'}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:'0.875rem', fontWeight:600, color: isSel?'#1E40AF':'var(--neutral-800)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{name}</div>
                         <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)' }}>Org role: {m.role}</div>
                       </div>
-                      {addAMUserId===m.user_id && <CheckCircle2 size={18} color="#3B82F6" style={{ marginLeft:'auto' }}/>}
+                      {isSel && <CheckCircle2 size={20} color="#3B82F6" style={{ flexShrink:0 }}/>}
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  )
+                })}
+              </div>
+            )}
+
             <div style={{ display:'flex', gap:10 }}>
               <button className="btn btn-secondary" onClick={() => { setShowAddAM(false); setAddAMUserId('') }} style={{ flex:1 }}>Cancel</button>
               <button className={`btn btn-primary ${savingAM?'btn-loading':''}`} onClick={handleAddAM} disabled={savingAM||!addAMUserId} style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
@@ -514,7 +572,7 @@ export function PKISalesPanel() {
               </div>
               <button onClick={() => setEditLead(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', fontSize:22, lineHeight:1 }}>×</button>
             </div>
-            <textarea className="input" rows={6} placeholder="Budget signals, requirements discussed, follow-up actions, next steps…" value={editNotes} onChange={e=>setEditNotes(e.target.value)} style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.6, marginBottom:12 }}/>
+            <textarea className="input" rows={6} placeholder="Budget signals, requirements, follow-up actions, next steps…" value={editNotes} onChange={e=>setEditNotes(e.target.value)} style={{ resize:'vertical', fontFamily:'inherit', lineHeight:1.6, marginBottom:12 }}/>
             <div style={{ display:'flex', gap:10 }}>
               <button className="btn btn-secondary" onClick={() => setEditLead(null)} style={{ flex:1 }}>Cancel</button>
               <button className={`btn btn-primary ${savingNotes?'btn-loading':''}`} onClick={saveNotes} disabled={savingNotes} style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
