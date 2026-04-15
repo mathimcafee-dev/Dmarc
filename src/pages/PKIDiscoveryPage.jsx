@@ -254,27 +254,20 @@ export function PKIDiscoveryPage() {
   async function loadAMs() {
     const { data: amsRaw } = await supabase
       .from('pki_sales_roles')
-      .select('user_id, role')
+      .select('*')
       .eq('org_id', currentOrg.id)
       .eq('role', 'account_manager')
     if (!amsRaw?.length) { setAccountManagers([]); return }
 
-    // Get display info: join org_members -> profiles + org_invitations for email
+    // Use SECURITY DEFINER RPC to get emails reliably
     const { data: members } = await supabase
-      .from('org_members')
-      .select('user_id, profiles(full_name), org_invitations(email)')
-      .eq('org_id', currentOrg.id)
-      .in('user_id', amsRaw.map(a => a.user_id))
+      .rpc('get_org_members_with_emails', { p_org_id: currentOrg.id })
 
     const enriched = amsRaw.map(am => {
       const m = members?.find(x => x.user_id === am.user_id) || {}
-      const fullName = m.profiles?.full_name
-      const email = Array.isArray(m.org_invitations)
-        ? m.org_invitations[0]?.email
-        : m.org_invitations?.email
       return {
         ...am,
-        display_name: fullName || email || am.user_id.slice(0,8) + '…',
+        display_name: am.display_name || m.full_name || m.email || am.user_id.slice(0,8) + '…',
       }
     })
     setAccountManagers(enriched)
