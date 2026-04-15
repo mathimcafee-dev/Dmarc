@@ -256,7 +256,7 @@ export function PKIDiscoveryPage() {
       .from('pki_sales_roles')
       .select('user_id, role, profiles(full_name, id)')
       .eq('org_id', currentOrg.id)
-      .in('role', ['account_manager','vp_sales'])
+      .eq('role', 'account_manager')
     setAccountManagers(data || [])
   }
 
@@ -555,7 +555,7 @@ export function PKIDiscoveryPage() {
                     <option value="">Unassigned</option>
                     {accountManagers.map(am => (
                       <option key={am.user_id} value={am.user_id}>
-                        {am.profiles?.full_name || am.user_id} ({am.role === 'vp_sales' ? 'VP Sales' : 'Account Manager'})
+                        {am.profiles?.full_name || am.user_id}
                       </option>
                     ))}
                   </select>
