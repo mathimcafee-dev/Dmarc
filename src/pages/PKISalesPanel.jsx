@@ -50,6 +50,11 @@ export function PKISalesPanel() {
   const [editLead, setEditLead] = useState(null)
   const [editNotes, setEditNotes] = useState('')
   const [savingNotes, setSavingNotes] = useState(false)
+  const [editDeal, setEditDeal] = useState(null)       // lead being edited for deal value
+  const [dealValue, setDealValue] = useState('')
+  const [dealCurrency, setDealCurrency] = useState('USD')
+  const [savingDeal, setSavingDeal] = useState(false)
+  const [approvingId, setApprovingId] = useState(null) // lead being approved/rejected
 
   const isVP = ['owner','admin'].includes(orgRole)
   const hasAccess = isVP || isAM
@@ -143,6 +148,24 @@ export function PKISalesPanel() {
     setSavingNotes(false); setEditLead(null); await loadAll()
   }
 
+  async function saveDeal() {
+    if (!editDeal) return
+    setSavingDeal(true)
+    const val = parseFloat(dealValue)
+    await supabase.from('pki_leads').update({
+      deal_value: isNaN(val) ? null : val,
+      deal_currency: dealCurrency,
+      updated_at: new Date().toISOString()
+    }).eq('id', editDeal.id)
+    setSavingDeal(false); setEditDeal(null); await loadAll()
+  }
+
+  async function approveLead(leadId, approval_status) {
+    setApprovingId(leadId)
+    await supabase.from('pki_leads').update({ approval_status, updated_at: new Date().toISOString() }).eq('id', leadId)
+    setApprovingId(null); await loadAll()
+  }
+
   async function handleAddAM() {
     if (!addAMUserId) return
     setSavingAM(true)
@@ -214,6 +237,20 @@ export function PKISalesPanel() {
               <div style={{fontSize:'0.75rem',color:'var(--neutral-500)',marginTop:5}}>{s.label}</div>
             </div>
           ))}
+          {isVP&&(()=>{
+            const pipelineVal = visibleLeads.filter(l=>l.deal_value).reduce((sum,l)=>sum+(l.deal_value||0),0)
+            const approved = visibleLeads.filter(l=>l.approval_status==='approved').reduce((sum,l)=>sum+(l.deal_value||0),0)
+            return pipelineVal > 0 ? <>
+              <div style={{background:'#F5F3FF',border:'1px solid #DDD6FE',borderRadius:12,padding:'14px 16px'}}>
+                <div style={{fontSize:'1.25rem',fontWeight:700,color:'#5B21B6',lineHeight:1}}>${pipelineVal.toLocaleString()}</div>
+                <div style={{fontSize:'0.75rem',color:'#7C3AED',marginTop:5}}>Pipeline value</div>
+              </div>
+              {approved>0&&<div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:12,padding:'14px 16px'}}>
+                <div style={{fontSize:'1.25rem',fontWeight:700,color:'#166534',lineHeight:1}}>${approved.toLocaleString()}</div>
+                <div style={{fontSize:'0.75rem',color:'#16A34A',marginTop:5}}>Approved deals</div>
+              </div>}
+            </> : null
+          })()}
         </div>
         {isVP&&Object.keys(byProduct).length>0&&(
           <div style={{background:'white',border:'1px solid var(--neutral-150)',borderRadius:14,padding:'1rem 1.25rem',marginBottom:16}}>
@@ -240,7 +277,7 @@ export function PKISalesPanel() {
           <div style={{background:'white',border:'1px solid var(--neutral-150)',borderRadius:14,overflow:'auto',boxShadow:'var(--shadow-xs)'}}>
             <table style={{width:'100%',borderCollapse:'collapse',minWidth:700}}>
               <thead><tr style={{background:'var(--neutral-50)',borderBottom:'1px solid var(--neutral-150)'}}>
-                {['Customer','Company','Country','Product','Meeting','Status',...(isVP?['Account Manager','']:[]),...(isAM?['Notes']:[])].map((h,i)=>(
+                {['Customer','Company','Country','Product','Meeting','Status',...(isVP?['Account Manager','Deal Value','Approval','']:[]),...(isAM?['Deal Value','Notes']:[])].map((h,i)=>(
                   <th key={i} style={{padding:'10px 12px',textAlign:'left',fontSize:'0.6875rem',textTransform:'uppercase',letterSpacing:'0.07em',color:'var(--neutral-500)',fontWeight:600,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr></thead>
@@ -283,7 +320,40 @@ export function PKISalesPanel() {
                       )}
                     </td>
                     {/* VP: AM name + Delete */}
+                    {/* VP: AM name */}
                     {isVP&&<td style={{padding:'11px 12px',fontSize:'0.8125rem',color:lead.am_name?'var(--neutral-700)':'var(--neutral-400)'}}>{lead.am_name||'Unassigned'}</td>}
+                    {/* VP: Deal value (read-only) */}
+                    {isVP&&<td style={{padding:'11px 12px'}}>
+                      {lead.deal_value
+                        ? <span style={{fontSize:'0.875rem',fontWeight:600,color:'#5B21B6'}}>{lead.deal_currency||'USD'} {Number(lead.deal_value).toLocaleString()}</span>
+                        : <span style={{fontSize:'0.75rem',color:'var(--neutral-400)'}}>—</span>}
+                    </td>}
+                    {/* VP: Approval button */}
+                    {isVP&&<td style={{padding:'11px 12px'}}>
+                      {lead.approval_status ? (
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <span style={{fontSize:'0.75rem',fontWeight:600,padding:'3px 9px',borderRadius:7,whiteSpace:'nowrap',
+                            color:lead.approval_status==='approved'?'#166534':lead.approval_status==='rejected'?'#991B1B':'#92400E',
+                            background:lead.approval_status==='approved'?'#F0FDF4':lead.approval_status==='rejected'?'#FEF2F2':'#FFFBEB',
+                            border:`1px solid ${lead.approval_status==='approved'?'#BBF7D0':lead.approval_status==='rejected'?'#FECACA':'#FDE68A'}`
+                          }}>
+                            {lead.approval_status==='approved'?'✓ Approved':lead.approval_status==='rejected'?'✗ Rejected':'↩ Rework'}
+                          </span>
+                          <button onClick={()=>approveLead(lead.id,null)} disabled={approvingId===lead.id}
+                            style={{background:'none',border:'none',cursor:'pointer',color:'var(--neutral-400)',fontSize:14,padding:2}} title="Reset">×</button>
+                        </div>
+                      ) : lead.deal_value ? (
+                        <div style={{display:'flex',gap:5}}>
+                          <button onClick={()=>approveLead(lead.id,'approved')} disabled={approvingId===lead.id}
+                            style={{padding:'4px 9px',fontSize:'0.75rem',fontWeight:600,background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:6,cursor:'pointer',color:'#166534',whiteSpace:'nowrap'}}>✓ Approve</button>
+                          <button onClick={()=>approveLead(lead.id,'rejected')} disabled={approvingId===lead.id}
+                            style={{padding:'4px 9px',fontSize:'0.75rem',fontWeight:600,background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:6,cursor:'pointer',color:'#DC2626',whiteSpace:'nowrap'}}>✗ Reject</button>
+                          <button onClick={()=>approveLead(lead.id,'rework')} disabled={approvingId===lead.id}
+                            style={{padding:'4px 9px',fontSize:'0.75rem',fontWeight:600,background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:6,cursor:'pointer',color:'#92400E',whiteSpace:'nowrap'}}>↩ Rework</button>
+                        </div>
+                      ) : <span style={{fontSize:'0.75rem',color:'var(--neutral-400)'}}>No deal value</span>}
+                    </td>}
+                    {/* VP: Delete */}
                     {isVP&&(
                       <td style={{padding:'11px 12px'}}>
                         <button onClick={()=>deleteLead(lead.id)}
@@ -292,6 +362,14 @@ export function PKISalesPanel() {
                         </button>
                       </td>
                     )}
+                    {/* AM: Deal Value — editable */}
+                    {isAM&&<td style={{padding:'11px 12px'}}>
+                      <button onClick={()=>{setEditDeal(lead);setDealValue(lead.deal_value||'');setDealCurrency(lead.deal_currency||'USD')}}
+                        style={{display:'flex',alignItems:'center',gap:5,background:lead.deal_value?'#F5F3FF':'var(--neutral-50)',border:`1px solid ${lead.deal_value?'#DDD6FE':'var(--neutral-200)'}`,borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:'0.75rem',fontWeight:600,color:lead.deal_value?'#5B21B6':'var(--neutral-500)',whiteSpace:'nowrap'}}>
+                        {lead.deal_value ? `${lead.deal_currency||'USD'} ${Number(lead.deal_value).toLocaleString()}` : '+ Deal value'}
+                        {lead.approval_status&&<span style={{fontSize:10,padding:'1px 5px',borderRadius:5,background:lead.approval_status==='approved'?'#BBF7D0':lead.approval_status==='rejected'?'#FECACA':'#FDE68A',color:lead.approval_status==='approved'?'#166534':lead.approval_status==='rejected'?'#991B1B':'#92400E'}}>{lead.approval_status==='approved'?'✓':lead.approval_status==='rejected'?'✗':'↩'}</span>}
+                      </button>
+                    </td>}
                     {/* AM: Notes */}
                     {isAM&&(
                       <td style={{padding:'11px 12px'}}>
@@ -489,6 +567,44 @@ export function PKISalesPanel() {
               <button className="btn btn-secondary" onClick={()=>{setShowAddAM(false);setAddAMUserId('')}} style={{flex:1}}>Cancel</button>
               <button className={`btn btn-primary ${savingAM?'btn-loading':''}`} onClick={handleAddAM} disabled={savingAM||!addAMUserId} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
                 {savingAM?'':<><CheckCircle2 size={15}/> Assign as AM</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DEAL VALUE MODAL */}
+      {editDeal&&(
+        <div style={{position:'fixed',inset:0,background:'rgba(14,22,36,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:16}}>
+          <div style={{background:'white',borderRadius:20,padding:'1.75rem',width:'100%',maxWidth:400,boxShadow:'var(--shadow-xl)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+              <div>
+                <div style={{fontSize:'1rem',fontWeight:600,color:'var(--neutral-800)'}}>Deal Value</div>
+                <div style={{fontSize:'0.75rem',color:'var(--neutral-500)',marginTop:2}}>{editDeal.first_name} {editDeal.last_name} · {editDeal.company_name}</div>
+              </div>
+              <button onClick={()=>setEditDeal(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--neutral-400)',fontSize:22,lineHeight:1}}>×</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'100px 1fr',gap:10,marginBottom:16}}>
+              <div className="form-group" style={{margin:0}}>
+                <label className="form-label">Currency</label>
+                <select className="input" value={dealCurrency} onChange={e=>setDealCurrency(e.target.value)} style={{cursor:'pointer'}}>
+                  {['USD','EUR','GBP','INR','AUD','CAD','SGD','AED'].map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{margin:0}}>
+                <label className="form-label">Deal value</label>
+                <input className="input" type="number" min="0" placeholder="e.g. 50000" value={dealValue} onChange={e=>setDealValue(e.target.value)}/>
+              </div>
+            </div>
+            {editDeal.approval_status&&(
+              <div style={{background:editDeal.approval_status==='approved'?'#F0FDF4':editDeal.approval_status==='rejected'?'#FEF2F2':'#FFFBEB',border:`1px solid ${editDeal.approval_status==='approved'?'#BBF7D0':editDeal.approval_status==='rejected'?'#FECACA':'#FDE68A'}`,borderRadius:8,padding:'8px 12px',fontSize:'0.8125rem',fontWeight:600,color:editDeal.approval_status==='approved'?'#166534':editDeal.approval_status==='rejected'?'#991B1B':'#92400E',marginBottom:16}}>
+                VP decision: {editDeal.approval_status==='approved'?'✓ Approved':editDeal.approval_status==='rejected'?'✗ Rejected':'↩ Rework required'}
+              </div>
+            )}
+            <div style={{display:'flex',gap:10}}>
+              <button className="btn btn-secondary" onClick={()=>setEditDeal(null)} style={{flex:1}}>Cancel</button>
+              <button className={`btn btn-primary ${savingDeal?'btn-loading':''}`} onClick={saveDeal} disabled={savingDeal||!dealValue} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                {savingDeal?'':<><CheckCircle2 size={15}/> Save deal value</>}
               </button>
             </div>
           </div>
