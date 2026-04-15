@@ -227,7 +227,6 @@ export function PKIDiscoveryPage() {
   const [saving, setSaving] = useState(false)
   const [savedSession, setSavedSession] = useState(null)
   // extended lead form (step 2: post-result)
-  const [showExtended, setShowExtended] = useState(false)
   const [extLead, setExtLead] = useState({ first_name:'', last_name:'', email:'', company_name:'', country:'', account_manager_id:'', meeting_date:'', meeting_time:'' })
   const [accountManagers, setAccountManagers] = useState([])
   const [savingExt, setSavingExt] = useState(false)
@@ -485,27 +484,88 @@ export function PKIDiscoveryPage() {
               ))}
             </div>
 
-            {/* Book meeting CTA — prominent if not yet saved */}
-            {!leadSaved && (
-              <div style={{ background:`${pm.color}0d`, border:`1px solid ${pm.color}33`, borderRadius:12, padding:'1rem 1.25rem', marginBottom:16, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
-                <div>
-                  <div style={{ fontSize:'0.875rem', fontWeight:600, color:pm.color, marginBottom:2 }}>📅 Book a meeting with a PKI consultant</div>
-                  <div style={{ fontSize:'0.75rem', color:'var(--neutral-600)' }}>Collect full customer details, assign an account manager, and schedule the follow-up call.</div>
+            {/* Inline booking form — always visible on result page */}
+            <div style={{ background:'white', border:`1px solid ${leadSaved ? 'var(--success-200)' : pm.color+'33'}`, borderRadius:14, overflow:'hidden', marginBottom:16 }}>
+              <div style={{ background: leadSaved ? 'var(--success-50)' : `${pm.color}0d`, padding:'12px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  {leadSaved
+                    ? <><CheckCircle2 size={16} color="var(--success-600)"/><span style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--success-700)' }}>Meeting booked &amp; saved to Sales Panel</span></>
+                    : <><span style={{ fontSize:15 }}>📅</span><span style={{ fontSize:'0.875rem', fontWeight:600, color:pm.color }}>Book a meeting &amp; capture customer details</span></>
+                  }
                 </div>
-                <button onClick={() => setShowExtended(true)} style={{ background:pm.color, color:'white', border:'none', borderRadius:9, padding:'8px 18px', fontWeight:600, fontSize:'0.8125rem', cursor:'pointer', flexShrink:0, whiteSpace:'nowrap' }}>
-                  Book Meeting →
-                </button>
+                {leadSaved && <span style={{ fontSize:'0.75rem', color:'var(--success-600)' }}>Visible to your account managers</span>}
               </div>
-            )}
-            {leadSaved && (
-              <div style={{ background:'var(--success-50)', border:'1px solid var(--success-100)', borderRadius:12, padding:'0.875rem 1.25rem', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
-                <CheckCircle2 size={18} color="var(--success-600)"/>
-                <div>
-                  <div style={{ fontSize:'0.875rem', fontWeight:600, color:'var(--success-700)' }}>Meeting details saved</div>
-                  <div style={{ fontSize:'0.75rem', color:'var(--success-600)' }}>Visible to the account manager and VP of Sales in the Sales Panel.</div>
+
+              {!leadSaved && (
+                <div style={{ padding:'1rem 1.25rem' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">First name</label>
+                      <input className="input" placeholder="Jane" value={extLead.first_name} onChange={e=>setExtLead(p=>({...p,first_name:e.target.value}))} />
+                    </div>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Last name</label>
+                      <input className="input" placeholder="Smith" value={extLead.last_name} onChange={e=>setExtLead(p=>({...p,last_name:e.target.value}))} />
+                    </div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Email address</label>
+                      <input className="input" type="email" placeholder="jane@acme.com" value={extLead.email} onChange={e=>setExtLead(p=>({...p,email:e.target.value}))} />
+                    </div>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Company name</label>
+                      <input className="input" placeholder="Acme Corporation" value={extLead.company_name} onChange={e=>setExtLead(p=>({...p,company_name:e.target.value}))} />
+                    </div>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Country</label>
+                      <select className="input" value={extLead.country} onChange={e=>setExtLead(p=>({...p,country:e.target.value}))} style={{ cursor:'pointer' }}>
+                        <option value="">Select country…</option>
+                        {COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin:0 }}>
+                      <label className="form-label">Account manager</label>
+                      <select className="input" value={extLead.account_manager_id} onChange={e=>setExtLead(p=>({...p,account_manager_id:e.target.value}))} style={{ cursor:'pointer' }}>
+                        <option value="">Select account manager…</option>
+                        {accountManagers.map(am=>(
+                          <option key={am.user_id} value={am.user_id}>{am.display_name}</option>
+                        ))}
+                      </select>
+                      {accountManagers.length===0 && <p style={{ fontSize:'0.6875rem', color:'var(--neutral-400)', marginTop:4 }}>No AMs assigned yet — add them in the Sales Panel.</p>}
+                    </div>
+                  </div>
+                  <div style={{ background:'var(--neutral-50)', border:'1px solid var(--neutral-150)', borderRadius:10, padding:'12px 14px', marginBottom:12 }}>
+                    <div style={{ fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)', marginBottom:10 }}>📆 Schedule meeting</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                      <div className="form-group" style={{ margin:0 }}>
+                        <label className="form-label">Date</label>
+                        <input className="input" type="date" min={new Date().toISOString().split('T')[0]} value={extLead.meeting_date} onChange={e=>setExtLead(p=>({...p,meeting_date:e.target.value}))} />
+                      </div>
+                      <div className="form-group" style={{ margin:0 }}>
+                        <label className="form-label">Time (your timezone)</label>
+                        <select className="input" value={extLead.meeting_time} onChange={e=>setExtLead(p=>({...p,meeting_time:e.target.value}))} style={{ cursor:'pointer' }}>
+                          <option value="">Select time…</option>
+                          {['09:00','09:30','10:00','10:30','11:00','11:30','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'].map(t=>(
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    className={`btn btn-primary ${savingExt?'btn-loading':''}`}
+                    onClick={handleExtSave}
+                    disabled={savingExt||!extLead.first_name.trim()||!extLead.last_name.trim()||!extLead.email.trim()||!extLead.company_name.trim()||!extLead.country}
+                    style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}
+                  >
+                    {savingExt?'':<><CheckCircle2 size={15}/> Save to Sales Pipeline</>}
+                  </button>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               <button onClick={() => handlePDF(s)} style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'white', border:'1px solid var(--neutral-200)', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)' }}>
@@ -519,99 +579,7 @@ export function PKIDiscoveryPage() {
           </div>
         </div>
 
-        {/* Extended lead / booking modal */}
-        {showExtended && (
-          <div style={{ position:'fixed', inset:0, background:'rgba(14,22,36,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1000, padding:16, overflowY:'auto' }}>
-            <div style={{ background:'white', borderRadius:20, padding:'1.75rem', width:'100%', maxWidth:560, boxShadow:'var(--shadow-xl)', margin:'auto' }}>
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-                <div>
-                  <div style={{ fontSize:'1rem', fontWeight:600, color:'var(--neutral-800)' }}>📅 Book Meeting & Capture Details</div>
-                  <div style={{ fontSize:'0.75rem', color:'var(--neutral-500)', marginTop:2 }}>This goes to the Sales Panel for AM and VP visibility</div>
-                </div>
-                <button onClick={() => setShowExtended(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--neutral-400)', fontSize:20, lineHeight:1 }}>×</button>
-              </div>
 
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-                {[
-                  {label:'First name',key:'first_name',placeholder:'Jane',span:1},
-                  {label:'Last name',key:'last_name',placeholder:'Smith',span:1},
-                ].map(f => (
-                  <div key={f.key} className="form-group" style={{ margin:0 }}>
-                    <label className="form-label">{f.label}</label>
-                    <input className="input" placeholder={f.placeholder} value={extLead[f.key]} onChange={e=>setExtLead(p=>({...p,[f.key]:e.target.value}))} />
-                  </div>
-                ))}
-              </div>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-                <div className="form-group" style={{ margin:0 }}>
-                  <label className="form-label">Email address</label>
-                  <input className="input" type="email" placeholder="jane@acme.com" value={extLead.email} onChange={e=>setExtLead(p=>({...p,email:e.target.value}))} />
-                </div>
-                <div className="form-group" style={{ margin:0 }}>
-                  <label className="form-label">Company name</label>
-                  <input className="input" placeholder="Acme Corporation" value={extLead.company_name} onChange={e=>setExtLead(p=>({...p,company_name:e.target.value}))} />
-                </div>
-              </div>
-              <div style={{ marginBottom:12 }}>
-                <div className="form-group" style={{ margin:0 }}>
-                  <label className="form-label">Country</label>
-                  <select className="input" value={extLead.country} onChange={e=>setExtLead(p=>({...p,country:e.target.value}))} style={{ cursor:'pointer' }}>
-                    <option value="">Select country…</option>
-                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ marginBottom:12 }}>
-                <div className="form-group" style={{ margin:0 }}>
-                  <label className="form-label">Assign account manager</label>
-                  <select className="input" value={extLead.account_manager_id} onChange={e=>setExtLead(p=>({...p,account_manager_id:e.target.value}))} style={{ cursor:'pointer' }}>
-                    <option value="">Unassigned</option>
-                    {accountManagers.map(am => (
-                      <option key={am.user_id} value={am.user_id}>
-                        {am.display_name}
-                      </option>
-                    ))}
-                  </select>
-                  {accountManagers.length === 0 && (
-                    <p style={{ fontSize:'0.75rem', color:'var(--neutral-400)', marginTop:4 }}>No account managers assigned yet — go to Sales Panel to add roles.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Calendar */}
-              <div style={{ background:'var(--neutral-50)', border:'1px solid var(--neutral-150)', borderRadius:12, padding:'1rem', marginBottom:16 }}>
-                <div style={{ fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)', marginBottom:10 }}>📆 Schedule meeting</div>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-                  <div className="form-group" style={{ margin:0 }}>
-                    <label className="form-label">Date</label>
-                    <input className="input" type="date" min={new Date().toISOString().split('T')[0]} value={extLead.meeting_date} onChange={e=>setExtLead(p=>({...p,meeting_date:e.target.value}))} />
-                  </div>
-                  <div className="form-group" style={{ margin:0 }}>
-                    <label className="form-label">Time (your timezone)</label>
-                    <select className="input" value={extLead.meeting_time} onChange={e=>setExtLead(p=>({...p,meeting_time:e.target.value}))} style={{ cursor:'pointer' }}>
-                      <option value="">Select time…</option>
-                      {['09:00','09:30','10:00','10:30','11:00','11:30','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'].map(t=>(
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ display:'flex', gap:10 }}>
-                <button className="btn btn-secondary" onClick={() => setShowExtended(false)} style={{ flex:1 }}>Cancel</button>
-                <button
-                  className={`btn btn-primary ${savingExt?'btn-loading':''}`}
-                  onClick={handleExtSave}
-                  disabled={savingExt || !extLead.first_name||!extLead.last_name||!extLead.email||!extLead.company_name||!extLead.country}
-                  style={{ flex:2, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}
-                >
-                  {savingExt ? '' : <><CheckCircle2 size={15}/> Save &amp; Add to Sales Pipeline</>}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
