@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useOrg } from '../hooks/useOrg'
 import { useAuth } from '../hooks/useAuth'
-import { ChevronRight, CheckCircle2, User, Building2, Mail, ArrowRight, Clock, ChevronDown, ChevronUp, Trash2, Plus, Cpu } from 'lucide-react'
+import { ChevronRight, CheckCircle2, User, Building2, Mail, ArrowRight, Clock, ChevronDown, ChevronUp, Trash2, Plus, Cpu, Download, Linkedin } from 'lucide-react'
 
 const PM = {
   scm_enterprise: { label:'SCM Enterprise',         color:'#0D6E56', bg:'#E8F7F2', icon:'🏢' },
@@ -281,6 +281,68 @@ export function PKIDiscoveryPage() {
     if (!error && data) { setSavedSession(data); setShowLead(false); setView('result'); await loadSessions() }
   }
 
+  function handlePDF(s) {
+    const pm = PM[s.product_routed] || PM.scm_enterprise
+    const date = new Date(s.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })
+    const allAnswers = { ...s.triage_answers, ...s.deep_answers }
+    const answersHTML = Object.entries(allAnswers).map(([k,v]) =>
+      `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee;color:#666;font-size:12px;text-transform:capitalize">${k.replace(/_/g,' ')}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-weight:500;font-size:12px;text-transform:capitalize">${String(v).replace(/_/g,' ')}</td></tr>`
+    ).join('')
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>PKI Discovery — ${s.company_name}</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:0;color:#1a2234;background:#f7f8fa}
+  .cover{background:${pm.color};padding:40px 48px;color:white}
+  .cover h1{margin:0 0 4px;font-size:26px;font-weight:700}
+  .cover p{margin:0;opacity:.75;font-size:14px}
+  .score-badge{display:inline-block;background:rgba(255,255,255,.18);border-radius:10px;padding:10px 18px;text-align:center;float:right;margin-top:-4px}
+  .score-badge .num{font-size:28px;font-weight:700;line-height:1}
+  .score-badge .lbl{font-size:11px;opacity:.7;margin-top:2px}
+  .body{padding:32px 48px}
+  .section-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8f9ab0;font-weight:600;margin:20px 0 8px}
+  .summary{background:#f1f3f8;border-left:3px solid ${pm.color};border-radius:0 8px 8px 0;padding:12px 16px;font-size:13px;line-height:1.7;color:#2a3347;margin-bottom:20px}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:20px}
+  .info-card{background:white;border:1px solid #e8ecf4;border-radius:8px;padding:8px 12px}
+  .info-card .lbl{font-size:10px;text-transform:uppercase;color:#8f9ab0;margin-bottom:3px}
+  .info-card .val{font-size:13px;font-weight:500}
+  table{width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;border:1px solid #e8ecf4}
+  th{background:#f1f3f8;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#606d87;font-weight:600}
+  .steps{display:flex;flex-direction:column;gap:8px}
+  .step{display:flex;align-items:center;gap:10px;background:white;border:1px solid #e8ecf4;border-radius:8px;padding:10px 14px;font-size:13px}
+  .step-num{width:22px;height:22px;border-radius:50%;background:${pm.color};color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e8ecf4;font-size:11px;color:#8f9ab0;text-align:center}
+</style></head><body>
+<div class="cover">
+  <div class="score-badge"><div class="num">${s.match_score}%</div><div class="lbl">match score</div></div>
+  <div style="font-size:11px;text-transform:uppercase;letter-spacing:.09em;opacity:.55;margin-bottom:6px">Recommended Sectigo solution</div>
+  <h1>${pm.icon} ${pm.label}</h1>
+  <p>PKI Discovery Report · ${s.customer_name} · ${s.company_name} · ${date}</p>
+</div>
+<div class="body">
+  <div class="section-label">Customer details</div>
+  <div class="info-grid">
+    <div class="info-card"><div class="lbl">Contact</div><div class="val">${s.customer_name}</div></div>
+    <div class="info-card"><div class="lbl">Company</div><div class="val">${s.company_name}</div></div>
+    <div class="info-card"><div class="lbl">Email</div><div class="val">${s.email}</div></div>
+    <div class="info-card"><div class="lbl">Date</div><div class="val">${date}</div></div>
+  </div>
+  <div class="section-label">Assessment summary</div>
+  <div class="summary">${SUMMARIES[s.product_routed] || ''}</div>
+  <div class="section-label">Discovery answers (${Object.keys(allAnswers).length} questions)</div>
+  <table><thead><tr><th>Question</th><th>Answer</th></tr></thead><tbody>${answersHTML}</tbody></table>
+  <div class="section-label" style="margin-top:20px">Recommended next steps</div>
+  <div class="steps">${NEXT_STEPS.map((step,i)=>`<div class="step"><div class="step-num">${i+1}</div>${step}</div>`).join('')}</div>
+  <div class="footer">Generated by DNSMonitor PKI Discovery · Powered by Sectigo · Contact consultant: linkedin.com/in/mathivanan-k-a90803108</div>
+</div>
+</body></html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `PKI-Discovery-${s.company_name.replace(/\s+/g,'-')}-${date.replace(/\s+/g,'-')}.html`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function startNew() {
     setPhase('triage'); setTriageIndex(0); setDeepIndex(0)
     setTriageAnswers({}); setDeepAnswers({}); setProduct(null); setDeepQs([]); setPicked(null)
@@ -415,9 +477,22 @@ export function PKIDiscoveryPage() {
                 </div>
               ))}
             </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button className="btn btn-primary" style={{ flex:1 }}>Schedule a demo</button>
-              <button className="btn btn-secondary" style={{ flex:1 }} onClick={startNew}>New discovery</button>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              <button
+                onClick={() => handlePDF(s)}
+                style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'white', border:'1px solid var(--neutral-200)', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'var(--neutral-700)' }}
+              >
+                <Download size={15}/> Export PDF
+              </button>
+              <a
+                href="https://www.linkedin.com/in/mathivanan-k-a90803108/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ flex:1, minWidth:140, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'10px', background:'#0A66C2', border:'none', borderRadius:10, cursor:'pointer', fontSize:'0.8125rem', fontWeight:600, color:'white', textDecoration:'none' }}
+              >
+                <Linkedin size={15}/> Contact PKI Consultant
+              </a>
+              <button className="btn btn-secondary" style={{ flex:1, minWidth:140 }} onClick={startNew}>New discovery</button>
             </div>
           </div>
         </div>
