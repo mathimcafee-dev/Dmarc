@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   Shield, Globe, BarChart2, Settings, Users, LogOut,
   ChevronDown, Plus, Building2, Bell, HelpCircle,
-  Layout, Activity, Clock, AlertTriangle, FileImage, Mail, Search, Clipboard
+  Layout, Activity, Clock, AlertTriangle, FileImage, Mail, Search, Clipboard, Cpu
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useOrg } from '../../hooks/useOrg'
@@ -51,6 +51,12 @@ const navSections = [
     label: 'Management',
     items: [
       { to: '/members', icon: <Users size={16} />, label: 'Members' },
+    ],
+  },
+  {
+    label: 'PKI Discovery',
+    items: [
+      { to: '/pki-discovery', icon: <Cpu size={16} />, label: 'Sectigo Discovery' },
     ],
   },
 ]
