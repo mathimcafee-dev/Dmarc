@@ -20,6 +20,12 @@ const navSections = [
     ],
   },
   {
+    label: 'PKI Discovery',
+    items: [
+      { to: '/pki-discovery', icon: <Cpu size={16} />, label: 'Sectigo Discovery' },
+    ],
+  },
+  {
     label: 'DNS Security',
     items: [
       { to: '/dmarc',    icon: <Shield size={16} />,      label: 'DMARC' },
@@ -51,12 +57,6 @@ const navSections = [
     label: 'Management',
     items: [
       { to: '/members', icon: <Users size={16} />, label: 'Members' },
-    ],
-  },
-  {
-    label: 'PKI Discovery',
-    items: [
-      { to: '/pki-discovery', icon: <Cpu size={16} />, label: 'Sectigo Discovery' },
     ],
   },
 ]
